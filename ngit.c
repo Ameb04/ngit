@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <io.h>
 #define MAX_SIZE 1000
 int dir_exists(char *name)
 {
@@ -18,8 +19,14 @@ int dir_exists(char *name)
         perror("GetCurrentDirectory");
         return -1;
     }
+    int result;
     while (strcmp(cwd, "C:\\") != 0)
     {
+        result = access("ngit", F_OK);
+        if (result == 0)
+        {
+            return 1;
+        }
         if (strcmp(name, strrchr(cwd, '\\') + 1) == 0)
         {
             return 1;
@@ -37,7 +44,32 @@ int dir_exists(char *name)
     }
     return 0;
 }
-void global_config(int argc, char **argv)
+void copy_global_to_all()
+{
+    char lines[MAX_SIZE];
+    FILE *projects;
+    projects = fopen("C:\\ngit\\Projects.txt", "r");
+    fscanf(projects, "%[^\0]", lines);
+    fclose(projects);
+    char *one_line;
+    one_line = strtok(lines, "\n");
+    while (one_line != NULL)
+    {
+        printf("%s\n", one_line);
+        char copy_global_variables[MAX_SIZE];
+        char copy_global_user[MAX_SIZE];
+        strcpy(copy_global_variables, "copy /y ");
+        strcpy(copy_global_variables + strlen(copy_global_variables), "C:\\ngit\\GlobalVariables.txt ");
+        strcpy(copy_global_variables + strlen(copy_global_variables), one_line);
+        strcpy(copy_global_user, "copy /y ");
+        strcpy(copy_global_user + strlen(copy_global_user), "C:\\ngit\\GlobalUser.txt ");
+        strcpy(copy_global_user + strlen(copy_global_user), one_line);
+        system(copy_global_variables);
+        system(copy_global_user);
+        one_line = strtok(NULL, "\n");
+    }
+}
+void create_global_config(int argc, char **argv)
 {
     if ((strncmp(argv[3], "user.name", 9) == 0) && argc > 4)
     {
@@ -71,15 +103,21 @@ void run_init(int argc, char **argv)
 {
     char address[MAX_SIZE];
     GetCurrentDirectory(sizeof(address), address);
-    char go_to_path[MAX_SIZE] = "cd ";
-    strcpy(go_to_path + 3, address);
-    strcpy(go_to_path + strlen(go_to_path), " & mkdir ngit & attrib +h ngit");
     int exist = dir_exists("ngit");
+    SetCurrentDirectory(address);
+    strcpy(address + strlen(address), "\\ngit");
     if (exist == 1)
         printf("Error : ngit folder is exist in here or it's parents\n");
     else if (exist == 0)
     {
-        system(go_to_path);
+        FILE *project_path_adding;
+        project_path_adding = fopen("C:\\ngit\\Projects.txt", "a");
+        fprintf(project_path_adding, "%s\n", address);
+        fclose(project_path_adding);
+        system("mkdir ngit");
+        system("attrib +h ngit");
+        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & type nul > StageCase.txt & echo master > CommitsAndBranches.txt");
+        copy_global_to_all();
     }
 }
 int main(int argc, char **argv)
@@ -90,7 +128,8 @@ int main(int argc, char **argv)
         {
             if ((strncmp(argv[2], "-global", 7) == 0) && argc > 3)
             {
-                global_config(argc, argv);
+                create_global_config(argc, argv);
+                copy_global_to_all();
             }
             else if ((strncmp(argv[2], "user.name", 9) == 0) && argc > 3) // must be completed
             {
