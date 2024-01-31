@@ -1,1 +1,1 @@
-fclose(add_to_stagin_area);
+debug(reshte);
