@@ -14,6 +14,34 @@
 #define barresi printf("dorost\n");
 #define MAX_SIZE 1000
 char *project_path;
+BOOL CopyFileToHiddenFolder(const char *src_path, const char *dst_path)
+{
+    // Create a SHFILEOPSTRUCT structure
+    SHFILEOPSTRUCT shfo = {0};
+
+    // Set the source and destination paths
+    shfo.pFrom = src_path;
+    shfo.pTo = dst_path;
+
+    // Set the operation to copy
+    shfo.wFunc = FO_COPY;
+
+    // Set the flags to allow copying to hidden folders and suppress errors
+    shfo.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+
+    // Call the SHFileOperation function and check the return value
+    int result = SHFileOperation(&shfo);
+    if (result == 0)
+    {
+        printf("File copied successfully.\n");
+        return TRUE;
+    }
+    else
+    {
+        printf("File copy failed. Error: %d\n", result);
+        return FALSE;
+    }
+}
 char *find_file_path(char *dir, char *file_name)
 {
     DIR *dp = opendir(dir);
@@ -140,25 +168,7 @@ int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name)
     FindClose(handle);
     return 0;
 }
-void copy_file(const char *src_path, const char *dst_path)
-{
-    BOOL result = CopyFile(src_path, dst_path, FALSE);
-    if (result)
-    {
-        printf("File copied successfully.\n");
-    }
-    else
-    {
-        printf("File copy failed. Error: %u\n", GetLastError());
-    }
-    char command[MAX_SIZE];
-    strcpy(command, "xcopy ");
-    strcat(command, src_path);
-    strcat(command, " ");
-    strcat(command, dst_path);
-    system(command);
-}
-void copy_folder(const char *src_path, const char *dst_path)
+void copy_folder(char *src_path, char *dst_path)
 {
     char *src_pattern = (char *)malloc(strlen(src_path) + 3);
     strcpy(src_pattern, src_path);
@@ -190,34 +200,105 @@ void copy_folder(const char *src_path, const char *dst_path)
         }
         else
         {
-            FILE *src_fp = fopen(src_file, "rb");
-            if (src_fp == NULL)
+            int added_in_previos = check_folder_of_file_exist_in_now_and_subdirectories(dst_path, src_path);
+            if (added_in_previos)
             {
-                perror("fopen src_file");
-                continue;
-            }
-            FILE *dst_fp = fopen(dst_file, "wb");
-            if (dst_fp == NULL)
-            {
-                perror("fopen dst_file");
-                continue;
-            }
-            char buffer[4096];
-            size_t n;
-            while ((n = fread(buffer, 1, sizeof(buffer), src_fp)) > 0)
-            {
-                if (fwrite(buffer, 1, n, dst_fp) != n)
+                char *argv_copy = malloc(MAX_SIZE);
+                strcpy(argv_copy, src_path);
+                argv_copy = strrev(argv_copy);
+                char *token = strtok(argv_copy, "\\");
+                if (token == NULL)
                 {
-                    perror("fwrite");
-                    break;
+                    strcpy(argv_copy, src_path);
                 }
+                else
+                {
+                    argv_copy = strrev(argv_copy);
+                }
+                char absolute_file_path[MAX_PATH];
+                DWORD length;
+                LPTSTR fileName;
+                length = GetFullPathName(argv_copy, MAX_PATH, absolute_file_path, &fileName);
+                debug(dst_path);
+                debug(argv_copy);
+                char *file_full_path = find_file_path(dst_path, argv_copy);
+                if (length == 0)
+                {
+                    printf("Error: %lu\n", GetLastError());
+                }
+                else
+                {
+                    debug(file_full_path);
+                    debug(absolute_file_path);
+                    int is_change = compare_files(file_full_path, absolute_file_path);
+                    if (is_change != 0)
+                    {
+                        if (access(src_path, F_OK) == 0)
+                        {
+                            FILE *src_fp = fopen(src_file, "rb");
+                            if (src_fp == NULL)
+                            {
+                                perror("fopen src_file");
+                                continue;
+                            }
+                            FILE *dst_fp = fopen(dst_file, "wb");
+                            if (dst_fp == NULL)
+                            {
+                                perror("fopen dst_file");
+                                continue;
+                            }
+                            char buffer[4096];
+                            size_t n;
+                            while ((n = fread(buffer, 1, sizeof(buffer), src_fp)) > 0)
+                            {
+                                if (fwrite(buffer, 1, n, dst_fp) != n)
+                                {
+                                    perror("fwrite");
+                                    break;
+                                }
+                            }
+                            if (ferror(src_fp))
+                            {
+                                perror("fread");
+                            }
+                            fclose(src_fp);
+                            fclose(dst_fp);
+                        }
+                    }
+                }
+                free(argv_copy);
             }
-            if (ferror(src_fp))
+            else
             {
-                perror("fread");
+                FILE *src_fp = fopen(src_file, "rb");
+                if (src_fp == NULL)
+                {
+                    perror("fopen src_file");
+                    continue;
+                }
+                FILE *dst_fp = fopen(dst_file, "wb");
+                if (dst_fp == NULL)
+                {
+                    perror("fopen dst_file");
+                    continue;
+                }
+                char buffer[4096];
+                size_t n;
+                while ((n = fread(buffer, 1, sizeof(buffer), src_fp)) > 0)
+                {
+                    if (fwrite(buffer, 1, n, dst_fp) != n)
+                    {
+                        perror("fwrite");
+                        break;
+                    }
+                }
+                if (ferror(src_fp))
+                {
+                    perror("fread");
+                }
+                fclose(src_fp);
+                fclose(dst_fp);
             }
-            fclose(src_fp);
-            fclose(dst_fp);
         }
         free(src_file);
         free(dst_file);
@@ -420,7 +501,7 @@ void add_to_stage(int argc, char **argv)
                     if (access(argv[i], F_OK) == 0)
                     {
 
-                        copy_file(argv[i], location);
+                        CopyFileToHiddenFolder(argv[i], location);
                     }
                     else
                     {
@@ -494,7 +575,7 @@ void add_to_stage(int argc, char **argv)
                             {
                                 if (access(argv[i], F_OK) == 0)
                                 {
-                                    copy_file(absolute_file_path, file_full_path);
+                                    CopyFileToHiddenFolder(absolute_file_path, file_full_path);
                                 }
                             }
                         }
@@ -504,17 +585,9 @@ void add_to_stage(int argc, char **argv)
                     {
                         if (access(argv[i], F_OK) == 0)
                         {
-                            copy_file(argv[i], location);
+                            CopyFileToHiddenFolder(argv[i], location);
                         }
                     }
-                    // if (access(argv[i], F_OK) == 0)
-                    // {
-                    //     copy_file(argv[i], location);
-                    // }
-                    // else
-                    // {
-                    //     printf("Error : file not found\n");
-                    // }
                 }
                 else
                 {
