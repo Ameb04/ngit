@@ -14,22 +14,218 @@
 #define barresi printf("dorost\n");
 #define MAX_SIZE 1000
 char *project_path;
+int is_folder_empty(char *folder_path)
+{
+    DIR *dir = opendir(folder_path);
+    if (dir == NULL)
+    {
+        perror("opendir");
+        return -1;
+    }
+    struct dirent *entry;
+    int count = 0;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (++count > 2)
+            break;
+    }
+    closedir(dir);
+    if (count <= 2)
+        return 1;
+    else
+        return 0;
+}
+void delete_empty_subdirs(char *path)
+{
+    char buffer[MAX_PATH];
+    DWORD length;
+    length = GetFullPathName(path, MAX_PATH, buffer, NULL);
+    if (length > 0 && length < MAX_PATH)
+    {
+        strcat(buffer, "\\*");
+        WIN32_FIND_DATA file_data;
+        HANDLE file_handle = FindFirstFile(buffer, &file_data);
+        if (file_handle != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                if (file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
+                    strcmp(file_data.cFileName, ".") != 0 &&
+                    strcmp(file_data.cFileName, "..") != 0)
+                {
+                    char temp[MAX_PATH];
+                    strcpy(temp, buffer);
+                    temp[strlen(temp) - 1] = '\0';
+                    strcat(temp, file_data.cFileName);
+                    delete_empty_subdirs(temp);
+                }
+            } while (FindNextFile(file_handle, &file_data)); // Get the next subdirectory
+            FindClose(file_handle);
+        }
+        buffer[strlen(buffer) - 2] = '\0';
+        if (!RemoveDirectory(buffer))
+        {
+            DWORD error = GetLastError();
+            if (error != ERROR_DIR_NOT_EMPTY)
+            {
+                printf("Error: %lu\n", error);
+            }
+        }
+    }
+    else
+    {
+        printf("Error: %lu\n", GetLastError());
+    }
+}
+int compare_files(char *path1, char *path2)
+{
+    FILE *f1, *f2;
+    char buffer1[1024], buffer2[1024];
+    size_t n1, n2;
+    int result = 0;
+    f1 = fopen(path1, "rb");
+    f2 = fopen(path2, "rb");
+    if (f1 == NULL || f2 == NULL)
+    {
+        printf("Error: Cannot open file %s or %s\n", path1, path2);
+        return -1;
+    }
+    while (1)
+    {
+        n1 = fread(buffer1, 1, sizeof(buffer1), f1);
+        n2 = fread(buffer2, 1, sizeof(buffer2), f2);
+        if (n1 != n2)
+        {
+            result = -1;
+            break;
+        }
+        if (n1 == 0)
+        {
+            result = 0;
+            break;
+        }
+        if (memcmp(buffer1, buffer2, n1) != 0)
+        {
+            result = -1;
+            break;
+        }
+    }
+    fclose(f1);
+    fclose(f2);
+    return result;
+}
+int delete_file(char *dir, char *filename)
+{
+    DIR *dp;
+    struct dirent *entry;
+    struct stat statbuf;
+    char path[1024];
+    int result = 0;
+    if ((dp = opendir(dir)) == NULL)
+    {
+        fprintf(stderr, "Cannot open directory: %s\n", dir);
+        return 0;
+    }
+    while ((entry = readdir(dp)) != NULL)
+    {
+        if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
+        {
+            continue;
+        }
+        snprintf(path, sizeof(path), "%s/%s", dir, entry->d_name);
+        if (stat(path, &statbuf) == -1)
+        {
+            fprintf(stderr, "Cannot get file information: %s\n", path);
+            continue;
+        }
+        if (S_ISDIR(statbuf.st_mode))
+        {
+            result = delete_file(path, filename);
+            if (result == 1)
+            {
+                break;
+            }
+        }
+        else
+        {
+            if (strcmp(filename, entry->d_name) == 0)
+            {
+                if (remove(path) == 0)
+                {
+                    printf("File deleted: %s\n", path);
+                    result = 1;
+                    break;
+                }
+                else
+                {
+                    fprintf(stderr, "Cannot delete file: %s\n", path);
+                }
+            }
+        }
+    }
+    closedir(dp);
+    return result;
+}
+void delete_folder(char *path1, char *path2)
+{
+    char buffer1[MAX_PATH];
+    DWORD length1;
+    length1 = GetFullPathName(path1, MAX_PATH, buffer1, NULL);
+    if (length1 > 0 && length1 < MAX_PATH)
+    {
+        strcat(buffer1, "\\*");
+        WIN32_FIND_DATA file_data;
+        HANDLE file_handle = FindFirstFile(buffer1, &file_data);
+        if (file_handle != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                if (strcmp(file_data.cFileName, ".") != 0 && strcmp(file_data.cFileName, "..") != 0)
+                {
+                    char temp1[MAX_PATH];
+                    strcpy(temp1, buffer1);
+                    temp1[strlen(temp1) - 1] = '\0';
+                    strcat(temp1, file_data.cFileName);
+                    char buffer2[MAX_PATH];
+                    DWORD length2;
+                    length2 = GetFullPathName(path2, MAX_PATH, buffer2, NULL);
+                    if (length2 > 0 && length2 < MAX_PATH)
+                    {
+                        strcat(buffer2, "\\");
+                        strcat(buffer2, file_data.cFileName);
+                        if (GetFileAttributes(buffer2) != INVALID_FILE_ATTRIBUTES)
+                        {
+                            if (file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                            {
+                                delete_folder(temp1, buffer2);
+                            }
+                            else
+                            {
+                                DeleteFile(buffer2);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        printf("Error: %lu\n", GetLastError());
+                    }
+                }
+            } while (FindNextFile(file_handle, &file_data));
+            FindClose(file_handle);
+        }
+    }
+    else
+    {
+        printf("Error: %lu\n", GetLastError());
+    }
+}
 BOOL CopyFileToHiddenFolder(const char *src_path, const char *dst_path)
 {
-    // Create a SHFILEOPSTRUCT structure
     SHFILEOPSTRUCT shfo = {0};
-
-    // Set the source and destination paths
     shfo.pFrom = src_path;
     shfo.pTo = dst_path;
-
-    // Set the operation to copy
     shfo.wFunc = FO_COPY;
-
-    // Set the flags to allow copying to hidden folders and suppress errors
     shfo.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
-
-    // Call the SHFileOperation function and check the return value
     int result = SHFileOperation(&shfo);
     if (result == 0)
     {
@@ -100,37 +296,6 @@ char *strrev(char *str)
         rev[i] = str[len - i - 1];
     }
     return rev;
-}
-int compare_files(char *path1, char *path2)
-{
-    HANDLE handle1 = CreateFile(path1, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (handle1 == INVALID_HANDLE_VALUE)
-    {
-        printf("Error: Unable to open file %s\n", path1);
-        return -2;
-    }
-    HANDLE handle2 = CreateFile(path2, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (handle2 == INVALID_HANDLE_VALUE)
-    {
-        printf("Error: Unable to open file %s\n", path2);
-        return -2;
-    }
-    FILETIME last_write_time1, last_write_time2;
-    BOOL result1 = GetFileTime(handle1, NULL, NULL, &last_write_time1);
-    BOOL result2 = GetFileTime(handle2, NULL, NULL, &last_write_time2);
-    if (result1 == FALSE || result2 == FALSE)
-    {
-        printf("Error: Unable to get file times for %s and %s\n", path1, path2);
-        return -2;
-    }
-    CloseHandle(handle1);
-    CloseHandle(handle2);
-    // Use CompareFileTime to compare the two FILETIME values
-    // The function returns -1 if the first value is less than the second value
-    // The function returns 0 if the two values are equal
-    // The function returns 1 if the first value is greater than the second value
-    int comparison = CompareFileTime(&last_write_time1, &last_write_time2);
-    return comparison;
 }
 int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name)
 {
@@ -219,8 +384,6 @@ void copy_folder(char *src_path, char *dst_path)
                 DWORD length;
                 LPTSTR fileName;
                 length = GetFullPathName(argv_copy, MAX_PATH, absolute_file_path, &fileName);
-                debug(dst_path);
-                debug(argv_copy);
                 char *file_full_path = find_file_path(dst_path, argv_copy);
                 if (length == 0)
                 {
@@ -228,8 +391,6 @@ void copy_folder(char *src_path, char *dst_path)
                 }
                 else
                 {
-                    debug(file_full_path);
-                    debug(absolute_file_path);
                     int is_change = compare_files(file_full_path, absolute_file_path);
                     if (is_change != 0)
                     {
@@ -371,14 +532,14 @@ void create_global_config(int argc, char **argv)
     {
         FILE *global_user;
         global_user = fopen("C:\\newgit\\GlobalUser.txt", "w");
-        fprintf(global_user, "%s\n", argv[4]);
+        fprintf(global_user, "name:%s\n", argv[4]);
         fclose(global_user);
     }
     else if ((strncmp(argv[3], "user.email", 6) == 0) && argc > 4)
     {
         FILE *global_user;
         global_user = fopen("C:\\newgit\\GlobalUser.txt", "a");
-        fprintf(global_user, "%s", argv[4]);
+        fprintf(global_user, "email:%s", argv[4]);
         fclose(global_user);
     }
     else if ((strncmp(argv[3], "alias", 5) == 0) && argc > 4)
@@ -397,7 +558,6 @@ void create_global_config(int argc, char **argv)
 }
 void create_local_config(int argc, char **argv)
 {
-
     if ((strncmp(argv[2], "user.name", 9) == 0) && argc > 3)
     {
         char address[MAX_SIZE];
@@ -405,7 +565,7 @@ void create_local_config(int argc, char **argv)
         strcpy(address + strlen(address), "\\ngit\\PersonalUser.txt");
         FILE *local_user;
         local_user = fopen(address, "w");
-        fprintf(local_user, "%s\n", argv[3]);
+        fprintf(local_user, "name:%s\n", argv[3]);
         fclose(local_user);
     }
     else if ((strncmp(argv[2], "user.email", 6) == 0) && argc > 3)
@@ -415,7 +575,7 @@ void create_local_config(int argc, char **argv)
         strcpy(address + strlen(address), "\\ngit\\PersonalUser.txt");
         FILE *local_user;
         local_user = fopen(address, "a");
-        fprintf(local_user, "%s", argv[3]);
+        fprintf(local_user, "email:%s", argv[3]);
         fclose(local_user);
     }
     else if ((strncmp(argv[2], "alias", 5) == 0) && argc > 3)
@@ -453,7 +613,7 @@ void run_init(int argc, char **argv)
         fclose(project_path_adding);
         system("mkdir ngit");
         system("attrib +h ngit");
-        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master > CommitsAndBranches.txt");
+        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master*null > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt");
         copy_global_to_all();
     }
 }
@@ -461,6 +621,7 @@ void add_to_stage(int argc, char **argv)
 {
     char address[MAX_SIZE];
     GetCurrentDirectory(sizeof(address), address);
+    debug(address);
     int is_project = dir_exist("ngit");
     SetCurrentDirectory(address);
     char location[MAX_SIZE];
@@ -559,8 +720,6 @@ void add_to_stage(int argc, char **argv)
                         DWORD length;
                         LPTSTR fileName;
                         length = GetFullPathName(argv_copy, MAX_PATH, absolute_file_path, &fileName);
-                        debug(location);
-                        debug(argv_copy);
                         char *file_full_path = find_file_path(location, argv_copy);
                         if (length == 0)
                         {
@@ -568,8 +727,6 @@ void add_to_stage(int argc, char **argv)
                         }
                         else
                         {
-                            debug(file_full_path);
-                            debug(absolute_file_path);
                             int is_change = compare_files(file_full_path, absolute_file_path);
                             if (is_change != 0)
                             {
@@ -608,8 +765,111 @@ void add_to_stage(int argc, char **argv)
         printf("Error : you are not in project folder.\n");
     }
 }
-void show_status()
+void reset_staging(int argc, char **argv)
 {
+    char *stage_case_address = malloc(MAX_SIZE);
+    strcpy(stage_case_address, project_path);
+    strcat(stage_case_address, "\\");
+    strcat(stage_case_address, "ngit");
+    char *dir_address = malloc(MAX_SIZE);
+    strcpy(dir_address, stage_case_address);
+    strcat(stage_case_address, "\\StageCase.txt");
+    FILE *stage = fopen(stage_case_address, "r");
+    char *line = malloc(MAX_SIZE);
+    fscanf(stage, "%[^\0]", line);
+    fclose(stage);
+    char *random_number = malloc(MAX_SIZE);
+    random_number = strtok(line, " ");
+    random_number = strtok(NULL, " ");
+    strcat(dir_address, "\\");
+    strcat(dir_address, random_number);
+    for (int i = 2; i < argc; i++) // must be edited
+    {
+        if (strchr(argv[i], '.') != NULL)
+        {
+            char *address_reverse = malloc(MAX_SIZE);
+            address_reverse = strrev(argv[i]);
+            address_reverse = strtok(address_reverse, "\\");
+            address_reverse = strrev(address_reverse);
+            if (address_reverse == NULL)
+            {
+                delete_file(dir_address, argv[i]);
+            }
+            else
+            {
+
+                delete_file(dir_address, address_reverse);
+            }
+            free(address_reverse);
+        }
+        else
+        {
+            char *path = malloc(MAX_SIZE);
+            strcpy(path, project_path);
+            strcat(path, "\\ngit\\");
+            strcat(path, random_number);
+            delete_folder(argv[i], path);
+            delete_empty_subdirs(path);
+            free(path);
+        }
+        free(line);
+        free(random_number);
+        free(stage_case_address);
+        free(dir_address);
+    }
+}
+void run_commit(char *message)
+{
+
+    char *location = malloc(MAX_SIZE);
+    strcpy(location, project_path);
+    strcat(location, "\\ngit\\StageCase.txt");
+    FILE *open_stage = fopen(location, "r");
+    char *line = malloc(MAX_SIZE);
+    fscanf(open_stage, "%[^\0]", line);
+    fclose(open_stage);
+    char *random_number = malloc(MAX_SIZE);
+    random_number = strtok(line, " ");
+    random_number = strtok(NULL, " ");
+    if (random_number == NULL)
+    {
+        printf("Error : you dont have add any things");
+        return;
+    }
+    char *stage_commit_address = malloc(MAX_SIZE);
+    strcpy(stage_commit_address, project_path);
+    strcat(stage_commit_address, "\\ngit\\");
+    strcat(stage_commit_address, random_number);
+    int is_empty = is_folder_empty(stage_commit_address);
+    if (is_empty)
+    {
+        printf("Error: you have not add any things");
+    }
+    else
+    {
+        char *commit_places = malloc(MAX_SIZE);
+        strcpy(commit_places, project_path);
+        strcat(commit_places, "\\ngit\\commits\\");
+        strcat(commit_places, random_number);
+        char *command = malloc(MAX_SIZE);
+        strcpy(command, "xcopy ");
+        strcat(command, stage_commit_address);
+        strcat(command, " ");
+        strcat(command, commit_places);
+        strcat(command, " /i /s /e /h");
+        system(command);
+        free(command);
+        FILE *write_stage = fopen(location, "w");
+        fprintf(write_stage, "%d", 1);
+        fclose(open_stage);
+        // FILE *
+        free(commit_places);
+        free(command);
+    }
+    free(location);
+    free(line);
+    free(random_number);
+    free(stage_commit_address);
 }
 int main(int argc, char **argv)
 {
@@ -642,6 +902,26 @@ int main(int argc, char **argv)
         else if ((strncmp(argv[1], "add", 3) == 0) && argc > 2) // must code -f and -n and function need to be change in i
         {
             add_to_stage(argc, argv);
+        }
+        else if ((strncmp(argv[1], "reset", 5) == 0) && argc > 2) // must code -f and -n and function need to be change in i
+        {
+            reset_staging(argc, argv);
+        }
+        else if ((strncmp(argv[1], "commit", 6) == 0) && argc == 4)
+        {
+            if ((strncmp(argv[2], "-m", 2) == 0))
+            {
+                if (strlen(argv[3]) <= 74)
+                {
+                    run_commit(argv[3]);
+                }
+                else
+                { // must be completed
+                }
+            }
+            else
+            { // must be completed
+            }
         }
         else
         {
