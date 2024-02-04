@@ -1,12 +1,1 @@
-branches_path = (char *)malloc(MAX_SIZE);
-        commits_path = (char *)malloc(MAX_SIZE);
-        global_user_path = (char *)malloc(MAX_SIZE);
-        personal_user_path = (char *)malloc(MAX_SIZE);
-        global_variables_path = (char *)malloc(MAX_SIZE);
-        personal_variables_path = (char *)malloc(MAX_SIZE);
-        local_or_global_path = (char *)malloc(MAX_SIZE);
-        now_branch_path = (char *)malloc(MAX_SIZE);
-        now_last_commits_path = (char *)malloc(MAX_SIZE);
-        stage_case_path = (char *)malloc(MAX_SIZE);
-        tags_path = (char *)malloc(MAX_SIZE);
-        commits_folder_path = (char *)malloc(MAX_SIZE);
+argv_copy

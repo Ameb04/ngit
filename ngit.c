@@ -26,6 +26,95 @@ char *now_last_commits_path;
 char *stage_case_path;
 char *tags_path;
 char *commits_folder_path;
+char *linked_commits_path;
+char *message_shortcuts_path;
+void delete_file(char *file_name, char *path)
+{
+    char buffer[256];
+    sprintf(buffer, "%s\\%s", path, file_name);
+    char command[MAX_SIZE];
+    strcpy(command, "del ");
+    strcat(command, buffer);
+    system(command);
+}
+void delete_folder(char *src_path, char *dst_path)
+{
+    char *src_pattern = (char *)malloc(strlen(src_path) + 3);
+    strcpy(src_pattern, src_path);
+    strcat(src_pattern, "/*");
+    DIR *dir = opendir(src_path);
+    if (dir == NULL)
+    {
+        perror("opendir");
+        return;
+    }
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        {
+            continue;
+        }
+        char *src_file = (char *)malloc(strlen(src_path) + strlen(entry->d_name) + 2);
+        sprintf(src_file, "%s/%s", src_path, entry->d_name);
+        if (entry->d_type == DT_DIR)
+        {
+            delete_folder(src_file, dst_path);
+        }
+        else
+        {
+            src_file = strrev(src_file);
+            src_file = strtok(src_file, "/");
+            src_file = strrev(src_file);
+            delete_file(src_file, dst_path);
+        }
+        free(src_file);
+    }
+    closedir(dir);
+}
+void copy_file_to_hidden_folder(char *path1, char *path2)
+{
+    FILE *source, *target;
+    char buffer[4096];
+    int n;
+    source = fopen(path1, "rb");
+    if (source == NULL)
+    {
+        printf("Error: cannot open source file %s\n", path1);
+        exit(1);
+    }
+    char *new_file = malloc(strlen(path2) + strlen(path1) + 2);
+    strcpy(new_file, path2);
+    strcat(new_file, "\\");
+    char *file_name = malloc(MAX_SIZE);
+    file_name = strrev(path1);
+    file_name = strtok(file_name, "/");
+    file_name = strrev(file_name);
+    if (file_name == NULL)
+    {
+        strcat(new_file, path1);
+    }
+    else
+    {
+        strcat(new_file, file_name);
+    }
+    target = fopen(new_file, "wb");
+    if (target == NULL)
+    {
+        printf("Error: cannot create target file %s\n", new_file);
+        fclose(source);
+        free(new_file);
+        exit(1);
+    }
+    while ((n = fread(buffer, 1, 4096, source)) > 0)
+    {
+        fwrite(buffer, 1, n, target);
+    }
+    free(file_name);
+    fclose(source);
+    fclose(target);
+    free(new_file);
+}
 int count_files(char *folder_path)
 {
     int count = 0;
@@ -163,130 +252,6 @@ int compare_files(char *path1, char *path2)
     fclose(f2);
     return result;
 }
-int delete_file(char *dir, char *filename)
-{
-    DIR *dp;
-    struct dirent *entry;
-    struct stat statbuf;
-    char path[1024];
-    int result = 0;
-    if ((dp = opendir(dir)) == NULL)
-    {
-        fprintf(stderr, "Cannot open directory: %s\n", dir);
-        return 0;
-    }
-    while ((entry = readdir(dp)) != NULL)
-    {
-        if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
-        {
-            continue;
-        }
-        snprintf(path, sizeof(path), "%s/%s", dir, entry->d_name);
-        if (stat(path, &statbuf) == -1)
-        {
-            fprintf(stderr, "Cannot get file information: %s\n", path);
-            continue;
-        }
-        if (S_ISDIR(statbuf.st_mode))
-        {
-            result = delete_file(path, filename);
-            if (result == 1)
-            {
-                break;
-            }
-        }
-        else
-        {
-            if (strcmp(filename, entry->d_name) == 0)
-            {
-                if (remove(path) == 0)
-                {
-                    printf("File deleted: %s\n", path);
-                    result = 1;
-                    break;
-                }
-                else
-                {
-                    fprintf(stderr, "Cannot delete file: %s\n", path);
-                }
-            }
-        }
-    }
-    closedir(dp);
-    return result;
-}
-void delete_folder(char *path1, char *path2)
-{
-    char buffer1[MAX_PATH];
-    DWORD length1;
-    length1 = GetFullPathName(path1, MAX_PATH, buffer1, NULL);
-    if (length1 > 0 && length1 < MAX_PATH)
-    {
-        strcat(buffer1, "\\*");
-        WIN32_FIND_DATA file_data;
-        HANDLE file_handle = FindFirstFile(buffer1, &file_data);
-        if (file_handle != INVALID_HANDLE_VALUE)
-        {
-            do
-            {
-                if (strcmp(file_data.cFileName, ".") != 0 && strcmp(file_data.cFileName, "..") != 0)
-                {
-                    char temp1[MAX_PATH];
-                    strcpy(temp1, buffer1);
-                    temp1[strlen(temp1) - 1] = '\0';
-                    strcat(temp1, file_data.cFileName);
-                    char buffer2[MAX_PATH];
-                    DWORD length2;
-                    length2 = GetFullPathName(path2, MAX_PATH, buffer2, NULL);
-                    if (length2 > 0 && length2 < MAX_PATH)
-                    {
-                        strcat(buffer2, "\\");
-                        strcat(buffer2, file_data.cFileName);
-                        if (GetFileAttributes(buffer2) != INVALID_FILE_ATTRIBUTES)
-                        {
-                            if (file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                            {
-                                delete_folder(temp1, buffer2);
-                            }
-                            else
-                            {
-                                DeleteFile(buffer2);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        printf("Error: %lu\n", GetLastError());
-                    }
-                }
-            } while (FindNextFile(file_handle, &file_data));
-            FindClose(file_handle);
-        }
-    }
-    else
-    {
-        printf("Error: %lu\n", GetLastError());
-    }
-}
-BOOL CopyFileToHiddenFolder(const char *src_path, const char *dst_path)
-{
-    SHFILEOPSTRUCT shfo = {0};
-    shfo.pFrom = src_path;
-    shfo.pTo = dst_path;
-    shfo.wFunc = FO_COPY;
-    shfo.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
-    int result = SHFileOperation(&shfo);
-    if (result == 0)
-    {
-        printf("File copied successfully.\n");
-        return TRUE;
-    }
-    else
-    {
-        printf("File copy failed. Error: %d\n", result);
-        return FALSE;
-    }
-}
 char *find_file_path(char *dir, char *file_name)
 {
     DIR *dp = opendir(dir);
@@ -401,117 +366,16 @@ void copy_folder(char *src_path, char *dst_path)
             continue;
         }
         char *src_file = (char *)malloc(strlen(src_path) + strlen(entry->d_name) + 2);
-        char *dst_file = (char *)malloc(strlen(dst_path) + strlen(entry->d_name) + 2);
         sprintf(src_file, "%s/%s", src_path, entry->d_name);
-        sprintf(dst_file, "%s/%s", dst_path, entry->d_name);
         if (entry->d_type == DT_DIR)
         {
-            if (mkdir(dst_file) != 0)
-            {
-                perror("mkdir");
-            }
-            copy_folder(src_file, dst_file);
+            copy_folder(src_file, dst_path);
         }
         else
         {
-            int added_in_previos = check_folder_of_file_exist_in_now_and_subdirectories(dst_path, src_path);
-            if (added_in_previos)
-            {
-                char *argv_copy = malloc(MAX_SIZE);
-                strcpy(argv_copy, src_path);
-                argv_copy = strrev(argv_copy);
-                char *token = strtok(argv_copy, "\\");
-                if (token == NULL)
-                {
-                    strcpy(argv_copy, src_path);
-                }
-                else
-                {
-                    argv_copy = strrev(argv_copy);
-                }
-                char absolute_file_path[MAX_PATH];
-                DWORD length;
-                LPTSTR fileName;
-                length = GetFullPathName(argv_copy, MAX_PATH, absolute_file_path, &fileName);
-                char *file_full_path = find_file_path(dst_path, argv_copy);
-                if (length == 0)
-                {
-                    printf("Error: %lu\n", GetLastError());
-                }
-                else
-                {
-                    int is_change = compare_files(file_full_path, absolute_file_path);
-                    if (is_change != 0)
-                    {
-                        if (access(src_path, F_OK) == 0)
-                        {
-                            FILE *src_fp = fopen(src_file, "rb");
-                            if (src_fp == NULL)
-                            {
-                                perror("fopen src_file");
-                                continue;
-                            }
-                            FILE *dst_fp = fopen(dst_file, "wb");
-                            if (dst_fp == NULL)
-                            {
-                                perror("fopen dst_file");
-                                continue;
-                            }
-                            char buffer[4096];
-                            size_t n;
-                            while ((n = fread(buffer, 1, sizeof(buffer), src_fp)) > 0)
-                            {
-                                if (fwrite(buffer, 1, n, dst_fp) != n)
-                                {
-                                    perror("fwrite");
-                                    break;
-                                }
-                            }
-                            if (ferror(src_fp))
-                            {
-                                perror("fread");
-                            }
-                            fclose(src_fp);
-                            fclose(dst_fp);
-                        }
-                    }
-                }
-                free(argv_copy);
-            }
-            else
-            {
-                FILE *src_fp = fopen(src_file, "rb");
-                if (src_fp == NULL)
-                {
-                    perror("fopen src_file");
-                    continue;
-                }
-                FILE *dst_fp = fopen(dst_file, "wb");
-                if (dst_fp == NULL)
-                {
-                    perror("fopen dst_file");
-                    continue;
-                }
-                char buffer[4096];
-                size_t n;
-                while ((n = fread(buffer, 1, sizeof(buffer), src_fp)) > 0)
-                {
-                    if (fwrite(buffer, 1, n, dst_fp) != n)
-                    {
-                        perror("fwrite");
-                        break;
-                    }
-                }
-                if (ferror(src_fp))
-                {
-                    perror("fread");
-                }
-                fclose(src_fp);
-                fclose(dst_fp);
-            }
+            copy_file_to_hidden_folder(src_file, dst_path);
         }
         free(src_file);
-        free(dst_file);
     }
     closedir(dir);
 }
@@ -666,7 +530,7 @@ void run_init(int argc, char **argv)
         fclose(project_path_adding);
         system("mkdir ngit");
         system("attrib +h ngit");
-        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master*null > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt");
+        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master*null > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt & echo No > LinkedCommits.txt & type nul > MessageShortcuts.txt");
         copy_global_to_all();
     }
 }
@@ -711,8 +575,8 @@ void add_to_stage(int argc, char **argv)
                 {
                     if (access(argv[i], F_OK) == 0)
                     {
-
-                        CopyFileToHiddenFolder(argv[i], location);
+                        // CopyFileToHiddenFolder(complete_path, location);
+                        copy_file_to_hidden_folder(argv[i], location);
                     }
                     else
                     {
@@ -723,6 +587,7 @@ void add_to_stage(int argc, char **argv)
                 {
                     if (access(argv[i], F_OK) == 0)
                     {
+
                         copy_folder(argv[i], location);
                     }
                     else
@@ -783,7 +648,8 @@ void add_to_stage(int argc, char **argv)
                             {
                                 if (access(argv[i], F_OK) == 0)
                                 {
-                                    CopyFileToHiddenFolder(absolute_file_path, file_full_path);
+                                    // CopyFileToHiddenFolder(absolute_file_path, file_full_path);
+                                    copy_file_to_hidden_folder(argv[i], location);
                                 }
                             }
                         }
@@ -793,7 +659,8 @@ void add_to_stage(int argc, char **argv)
                     {
                         if (access(argv[i], F_OK) == 0)
                         {
-                            CopyFileToHiddenFolder(argv[i], location);
+                            // CopyFileToHiddenFolder(argv[i], location);
+                            copy_file_to_hidden_folder(argv[i], location);
                         }
                     }
                 }
@@ -844,12 +711,12 @@ void reset_staging(int argc, char **argv)
             address_reverse = strrev(address_reverse);
             if (address_reverse == NULL)
             {
-                delete_file(dir_address, argv[i]);
+                delete_file(argv[i], dir_address);
             }
             else
             {
 
-                delete_file(dir_address, address_reverse);
+                delete_file(address_reverse, dir_address);
             }
             free(address_reverse);
         }
@@ -860,7 +727,6 @@ void reset_staging(int argc, char **argv)
             strcat(path, "\\ngit\\");
             strcat(path, random_number);
             delete_folder(argv[i], path);
-            delete_empty_subdirs(path);
             free(path);
         }
         free(line);
@@ -910,7 +776,7 @@ void run_commit(char *message)
         fprintf(write_stage, "%d", 1);
         fclose(open_stage);
         FILE *branch_file = fopen(now_branch_path, "r");
-        char branch_in_now[MAX_SIZE];
+        char branch_in_now[MAX_SIZE]; // must be editied in checkout and branch making
         fscanf(branch_file, "%[^\0]", branch_in_now);
         fclose(branch_file);
         time_t t = time(NULL);
@@ -940,11 +806,33 @@ void run_commit(char *message)
         fscanf(get_previos_commits, "%[^\0]", info);
         fclose(get_previos_commits);
         FILE *put_commit_information = fopen(commits_path, "w");
-        fprintf(put_commit_information, "**********\ncommit_id:%s\n%s\ntime:%s\nbranch:%snumber_of_files_commited:%d\nmessage:%s\n**********", random_number, user_name_and_user_email, time_and_hour, branch_in_now, number_of_files, message);
+        fprintf(put_commit_information, "commit_id:%s\n%s\ntime:%s\nbranch:%snumber_of_files_commited:%d\nmessage:%s\n**********\n", random_number, user_name_and_user_email, time_and_hour, branch_in_now, number_of_files, message);
         fclose(put_commit_information);
         FILE *put_previos_commits = fopen(commits_path, "a");
         fprintf(put_previos_commits, "%s", info);
         fclose(put_previos_commits);
+        char matn[MAX_SIZE];
+        FILE *link = fopen(linked_commits_path, "r");
+        fscanf(link, "%[^\0]", matn);
+        fclose(link);
+        if (strncmp(matn, "No", 2) == 0)
+        {
+            FILE *link = fopen(linked_commits_path, "w");
+            fprintf(link, "#%s*%s*%s#", random_number, "NULL", branch_in_now);
+            fclose(link);
+        }
+        else
+        {
+            char *line = malloc(MAX_SIZE);
+            line = strrev(matn);
+            line = strtok(line, "#");
+            line = strrev(line);
+            line = strtok(line, "*");
+            FILE *link = fopen(linked_commits_path, "a");
+            fprintf(link, "%s*%s*%s#", random_number, line, branch_in_now);
+            fclose(link);
+            free(line);
+        }
         char del[MAX_SIZE];
         strcpy(del, "rmdir /s /q ");
         strcat(del, stage_commit_address);
@@ -973,6 +861,8 @@ int main(int argc, char **argv)
         stage_case_path = (char *)malloc(MAX_SIZE);
         tags_path = (char *)malloc(MAX_SIZE);
         commits_folder_path = (char *)malloc(MAX_SIZE);
+        message_shortcuts_path = (char *)malloc(MAX_SIZE);
+        linked_commits_path = (char *)malloc(MAX_SIZE);
         char address[MAX_SIZE];
         GetCurrentDirectory(sizeof(address), address);
         dir_exist("ngit");
@@ -989,6 +879,8 @@ int main(int argc, char **argv)
         strcpy(commits_folder_path, project_path);
         strcpy(tags_path, project_path);
         strcpy(now_branch_path, project_path);
+        strcpy(message_shortcuts_path, project_path);
+        strcpy(linked_commits_path, project_path);
         strcat(branches_path, "\\ngit");
         strcat(commits_path, "\\ngit");
         strcat(global_user_path, "\\ngit");
@@ -1001,6 +893,8 @@ int main(int argc, char **argv)
         strcat(tags_path, "\\ngit");
         strcat(now_branch_path, "\\ngit");
         strcat(commits_folder_path, "\\ngit");
+        strcat(message_shortcuts_path, "\\ngit");
+        strcat(linked_commits_path, "\\ngit");
         strcat(branches_path, "\\Branches.txt");
         strcat(commits_path, "\\Commits.txt");
         strcat(global_user_path, "\\GlobalUser.txt");
@@ -1013,6 +907,8 @@ int main(int argc, char **argv)
         strcat(tags_path, "\\Tags.txt");
         strcat(now_branch_path, "\\NowBranch.txt");
         strcat(commits_folder_path, "\\commits");
+        strcat(message_shortcuts_path, "\\MessageShortcuts.txt");
+        strcat(linked_commits_path, "\\LinkedCommits.txt");
         if ((strncmp(argv[1], "config", 6) == 0) && argc > 2)
         {
             if ((strncmp(argv[2], "-global", 7) == 0) && argc > 3)
@@ -1077,5 +973,7 @@ int main(int argc, char **argv)
     free(stage_case_path);
     free(tags_path);
     free(commits_folder_path);
+    free(message_shortcuts_path);
+    free(linked_commits_path);
     return 0;
 }
