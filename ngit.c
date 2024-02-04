@@ -14,6 +14,55 @@
 #define barresi printf("dorost\n");
 #define MAX_SIZE 1000
 char *project_path;
+char *branches_path;
+char *commits_path;
+char *global_user_path;
+char *personal_user_path;
+char *global_variables_path;
+char *personal_variables_path;
+char *local_or_global_path;
+char *now_branch_path;
+char *now_last_commits_path;
+char *stage_case_path;
+char *tags_path;
+char *commits_folder_path;
+int count_files(char *folder_path)
+{
+    int count = 0;
+    char search_path[MAX_PATH];
+    sprintf(search_path, "%s\\*.*", folder_path);
+    WIN32_FIND_DATA fd;
+    HANDLE h = FindFirstFile(search_path, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        perror("FindFirstFile");
+        return -1;
+    }
+    do
+    {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0)
+        {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                char subfolder_path[MAX_PATH];
+                sprintf(subfolder_path, "%s\\%s", folder_path, fd.cFileName);
+                int subcount = count_files(subfolder_path);
+                if (subcount == -1)
+                {
+                    FindClose(h);
+                    return -1;
+                }
+                count += subcount;
+            }
+            else
+            {
+                count++;
+            }
+        }
+    } while (FindNextFile(h, &fd));
+    FindClose(h);
+    return count;
+}
 int is_folder_empty(char *folder_path)
 {
     DIR *dir = opendir(folder_path);
@@ -523,7 +572,14 @@ void copy_global_to_all()
         strcpy(copy_global_user + strlen(copy_global_user), one_line);
         system(copy_global_variables);
         system(copy_global_user);
+        char *set_global = malloc(MAX_SIZE);
+        strcpy(set_global, one_line);
+        strcat(set_global, "\\LocalOrGlobal.txt");
+        FILE *log = fopen(set_global, "w");
+        fprintf(log, "%d", 1);
+        fclose(log);
         one_line = strtok(NULL, "\n");
+        free(set_global);
     }
 }
 void create_global_config(int argc, char **argv)
@@ -560,35 +616,32 @@ void create_local_config(int argc, char **argv)
 {
     if ((strncmp(argv[2], "user.name", 9) == 0) && argc > 3)
     {
-        char address[MAX_SIZE];
-        strcpy(address, project_path);
-        strcpy(address + strlen(address), "\\ngit\\PersonalUser.txt");
         FILE *local_user;
-        local_user = fopen(address, "w");
+        local_user = fopen(personal_user_path, "w");
         fprintf(local_user, "name:%s\n", argv[3]);
         fclose(local_user);
+        FILE *log = fopen(local_or_global_path, "w");
+        fprintf(log, "%d", 0);
+        fclose(log);
     }
     else if ((strncmp(argv[2], "user.email", 6) == 0) && argc > 3)
     {
-        char *address;
-        strcpy(address, project_path);
-        strcpy(address + strlen(address), "\\ngit\\PersonalUser.txt");
         FILE *local_user;
-        local_user = fopen(address, "a");
+        local_user = fopen(personal_user_path, "a");
         fprintf(local_user, "email:%s", argv[3]);
         fclose(local_user);
+        FILE *log = fopen(local_or_global_path, "w");
+        fprintf(log, "%d", 0);
+        fclose(log);
     }
     else if ((strncmp(argv[2], "alias", 5) == 0) && argc > 3)
     {
-        char *address;
-        strcpy(address, project_path);
-        strcpy(address + strlen(address), "\\ngit\\PersonalVariables.txt");
         char *alias = malloc(MAX_SIZE);
         alias = strtok(argv[2], ".");
         alias = strtok(NULL, ".");
-        FILE *locak_variables;
-        locak_variables = fopen("C:\\newgit\\GlobalVariables.txt", "a");
-        fprintf(locak_variables, "%s %s\n", argv[3], alias);
+        FILE *local_variables;
+        local_variables = fopen(personal_variables_path, "a");
+        fprintf(local_variables, "%s %s\n", argv[3], alias);
         // must be checked that a alias exist or not
         free(alias);
     }
@@ -613,7 +666,7 @@ void run_init(int argc, char **argv)
         fclose(project_path_adding);
         system("mkdir ngit");
         system("attrib +h ngit");
-        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master*null > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt");
+        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master*null > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt");
         copy_global_to_all();
     }
 }
@@ -621,13 +674,9 @@ void add_to_stage(int argc, char **argv)
 {
     char address[MAX_SIZE];
     GetCurrentDirectory(sizeof(address), address);
-    debug(address);
     int is_project = dir_exist("ngit");
     SetCurrentDirectory(address);
-    char location[MAX_SIZE];
-    strcpy(location, project_path);
-    strcat(location, "\\ngit\\StageCase.txt");
-    FILE *stagecase = fopen(location, "r");
+    FILE *stagecase = fopen(stage_case_path, "r");
     char is_commited[MAX_SIZE];
     fscanf(stagecase, "%[^\0]", is_commited);
     fclose(stagecase);
@@ -637,11 +686,12 @@ void add_to_stage(int argc, char **argv)
         {
             srand(time(NULL));
             int random_number = rand() % 100000 + 1234567;
-            stagecase = fopen(location, "w");
+            stagecase = fopen(stage_case_path, "w");
             fprintf(stagecase, "%d %d", 0, random_number); // when commited must be 1
             fclose(stagecase);
             char random[MAX_SIZE];
             sprintf(random, "%d", random_number);
+            char location[MAX_SIZE];
             strcpy(location, project_path);
             strcat(location, "\\ngit");
             SetCurrentDirectory(location);
@@ -688,6 +738,7 @@ void add_to_stage(int argc, char **argv)
             reshte = strtok(NULL, " ");
             char random[MAX_SIZE] = "\\";
             sprintf(random + 1, "%s", reshte);
+            char location[MAX_SIZE];
             strcpy(location, project_path);
             strcat(location, "\\ngit\\");
             strcat(location, is_commited + 2);
@@ -820,11 +871,7 @@ void reset_staging(int argc, char **argv)
 }
 void run_commit(char *message)
 {
-
-    char *location = malloc(MAX_SIZE);
-    strcpy(location, project_path);
-    strcat(location, "\\ngit\\StageCase.txt");
-    FILE *open_stage = fopen(location, "r");
+    FILE *open_stage = fopen(stage_case_path, "r");
     char *line = malloc(MAX_SIZE);
     fscanf(open_stage, "%[^\0]", line);
     fclose(open_stage);
@@ -859,14 +906,52 @@ void run_commit(char *message)
         strcat(command, " /i /s /e /h");
         system(command);
         free(command);
-        FILE *write_stage = fopen(location, "w");
+        FILE *write_stage = fopen(stage_case_path, "w");
         fprintf(write_stage, "%d", 1);
         fclose(open_stage);
-        // FILE *
+        FILE *branch_file = fopen(now_branch_path, "r");
+        char branch_in_now[MAX_SIZE];
+        fscanf(branch_file, "%[^\0]", branch_in_now);
+        fclose(branch_file);
+        time_t t = time(NULL);
+        struct tm *tm = localtime(&t);
+        char time_and_hour[64];
+        strftime(time_and_hour, sizeof(time_and_hour), "%Y-%m-%d %H:%M", tm);
+        FILE *loq_file = fopen(local_or_global_path, "r");
+        char loc_or_glob[10];
+        fscanf(loq_file, "%[^\0]", loc_or_glob);
+        fclose(loq_file);
+        char user_name_and_user_email[MAX_SIZE];
+        if (strncmp(loc_or_glob, "1", 1) == 0)
+        {
+            FILE *loq_file = fopen(global_user_path, "r");
+            fscanf(loq_file, "%[^\0]", user_name_and_user_email);
+            fclose(loq_file);
+        }
+        else if (strncmp(loc_or_glob, "0", 1) == 0)
+        {
+            FILE *loq_file = fopen(personal_user_path, "r");
+            fscanf(loq_file, "%[^\0]", user_name_and_user_email);
+            fclose(loq_file);
+        }
+        int number_of_files = count_files(stage_commit_address);
+        char info[10000];
+        FILE *get_previos_commits = fopen(commits_path, "r");
+        fscanf(get_previos_commits, "%[^\0]", info);
+        fclose(get_previos_commits);
+        FILE *put_commit_information = fopen(commits_path, "w");
+        fprintf(put_commit_information, "**********\ncommit_id:%s\n%s\ntime:%s\nbranch:%snumber_of_files_commited:%d\nmessage:%s\n**********", random_number, user_name_and_user_email, time_and_hour, branch_in_now, number_of_files, message);
+        fclose(put_commit_information);
+        FILE *put_previos_commits = fopen(commits_path, "a");
+        fprintf(put_previos_commits, "%s", info);
+        fclose(put_previos_commits);
+        char del[MAX_SIZE];
+        strcpy(del, "rmdir /s /q ");
+        strcat(del, stage_commit_address);
+        system(del);
         free(commit_places);
         free(command);
     }
-    free(location);
     free(line);
     free(random_number);
     free(stage_commit_address);
@@ -876,10 +961,58 @@ int main(int argc, char **argv)
     if ((strncmp(argv[0], "ngit", 4) == 0) && argc > 1)
     {
         project_path = (char *)malloc(MAX_SIZE);
+        branches_path = (char *)malloc(MAX_SIZE);
+        commits_path = (char *)malloc(MAX_SIZE);
+        global_user_path = (char *)malloc(MAX_SIZE);
+        personal_user_path = (char *)malloc(MAX_SIZE);
+        global_variables_path = (char *)malloc(MAX_SIZE);
+        personal_variables_path = (char *)malloc(MAX_SIZE);
+        local_or_global_path = (char *)malloc(MAX_SIZE);
+        now_branch_path = (char *)malloc(MAX_SIZE);
+        now_last_commits_path = (char *)malloc(MAX_SIZE);
+        stage_case_path = (char *)malloc(MAX_SIZE);
+        tags_path = (char *)malloc(MAX_SIZE);
+        commits_folder_path = (char *)malloc(MAX_SIZE);
         char address[MAX_SIZE];
         GetCurrentDirectory(sizeof(address), address);
         dir_exist("ngit");
         SetCurrentDirectory(address);
+        strcpy(branches_path, project_path);
+        strcpy(commits_path, project_path);
+        strcpy(global_user_path, project_path);
+        strcpy(personal_user_path, project_path);
+        strcpy(global_variables_path, project_path);
+        strcpy(personal_variables_path, project_path);
+        strcpy(local_or_global_path, project_path);
+        strcpy(now_last_commits_path, project_path);
+        strcpy(stage_case_path, project_path);
+        strcpy(commits_folder_path, project_path);
+        strcpy(tags_path, project_path);
+        strcpy(now_branch_path, project_path);
+        strcat(branches_path, "\\ngit");
+        strcat(commits_path, "\\ngit");
+        strcat(global_user_path, "\\ngit");
+        strcat(personal_user_path, "\\ngit");
+        strcat(global_variables_path, "\\ngit");
+        strcat(personal_variables_path, "\\ngit");
+        strcat(local_or_global_path, "\\ngit");
+        strcat(now_last_commits_path, "\\ngit");
+        strcat(stage_case_path, "\\ngit");
+        strcat(tags_path, "\\ngit");
+        strcat(now_branch_path, "\\ngit");
+        strcat(commits_folder_path, "\\ngit");
+        strcat(branches_path, "\\Branches.txt");
+        strcat(commits_path, "\\Commits.txt");
+        strcat(global_user_path, "\\GlobalUser.txt");
+        strcat(personal_user_path, "\\PersonalUser.txt");
+        strcat(global_variables_path, "\\GlobalVariables.txt");
+        strcat(personal_variables_path, "\\PersonalVariables.txt");
+        strcat(local_or_global_path, "\\LocalOrGlobal.txt");
+        strcat(now_last_commits_path, "\\NowLastCommits.txt");
+        strcat(stage_case_path, "\\StageCase.txt");
+        strcat(tags_path, "\\Tags.txt");
+        strcat(now_branch_path, "\\NowBranch.txt");
+        strcat(commits_folder_path, "\\commits");
         if ((strncmp(argv[1], "config", 6) == 0) && argc > 2)
         {
             if ((strncmp(argv[2], "-global", 7) == 0) && argc > 3)
@@ -887,7 +1020,7 @@ int main(int argc, char **argv)
                 create_global_config(argc, argv);
                 copy_global_to_all();
             }
-            else if (argc > 3)
+            else if (argc > 3) // must be checked
             {
                 create_local_config(argc, argv);
             }
@@ -932,5 +1065,17 @@ int main(int argc, char **argv)
         printf("Error : command not found. please put \"ngit\" in first of your command and type the rest of command.\n");
     }
     free(project_path);
+    free(branches_path);
+    free(commits_path);
+    free(global_user_path);
+    free(personal_user_path);
+    free(global_variables_path);
+    free(personal_variables_path);
+    free(local_or_global_path);
+    free(now_branch_path);
+    free(now_last_commits_path);
+    free(stage_case_path);
+    free(tags_path);
+    free(commits_folder_path);
     return 0;
 }
