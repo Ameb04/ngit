@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <io.h>
 #include <time.h>
+#include <ctype.h>
 #define debug(x) printf("*%s*\n", x);
 #define barresi printf("dorost\n");
 #define MAX_SIZE 1000
@@ -28,6 +29,112 @@ char *tags_path;
 char *commits_folder_path;
 char *linked_commits_path;
 char *message_shortcuts_path;
+int date_to_array(char *date, int arr[6])
+{
+    int n = sscanf(date, "%d-%d-%d %d:%d:%d", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
+    if (n == 6)
+    {
+        if (arr[0] > 0 && arr[1] >= 1 && arr[1] <= 12 && arr[2] >= 1 && arr[2] <= 31 && arr[3] >= 0 && arr[3] < 24 && arr[4] >= 0 && arr[4] < 60 && arr[5] >= 0 && arr[5] < 60)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+int date_cmp(int arr1[6], int arr2[6])
+{
+    for (int i = 0; i < 6; i++)
+    {
+        if (arr1[i] > arr2[i])
+        {
+            return 1;
+        }
+        if (arr1[i] < arr2[i])
+        {
+            return -1;
+        }
+    }
+    return 0;
+}
+int date_str_cmp(char *date1, char *date2)
+{
+    int arr1[6], arr2[6];
+    int r1 = date_to_array(date1, arr1);
+    int r2 = date_to_array(date2, arr2);
+    if (r1 && r2)
+    {
+        return date_cmp(arr1, arr2);
+    }
+    return -2;
+}
+bool is_wildcard(char c)
+{
+    return c == '?' || c == '*';
+}
+bool compare_with_wildcard(char *str, char *word)
+{
+    if (*str == '\0' && *word != '\0')
+    {
+        return false;
+    }
+    if (*word == '\0' && *str != '\0')
+    {
+        return true;
+    }
+    if (is_wildcard(*word))
+    {
+        if (*word == '?')
+        {
+            if (*str == '\0')
+            {
+                return false;
+            }
+            return compare_with_wildcard(str + 1, word + 1);
+        }
+        if (*word == '*')
+        {
+            if (*str == '\0')
+            {
+                return compare_with_wildcard(str, word + 1);
+            }
+            return compare_with_wildcard(str + 1, word + 1);
+        }
+    }
+    if (*word == *str)
+    {
+        return compare_with_wildcard(str + 1, word + 1);
+    }
+    return false;
+}
+int search_word_in_sentence(char *sentence, char *word)
+{
+    while (*sentence != '\0')
+    {
+        if (compare_with_wildcard(sentence, word))
+        {
+            return 1;
+        }
+        sentence++;
+    }
+    return 0;
+}
+int char_to_int(char *str)
+{
+    int result = 0;
+    while (*str != '\0')
+    {
+        if (*str >= '0' && *str <= '9')
+        {
+            result = result * 10 + (*str - '0');
+        }
+        else
+        {
+            return 0;
+        }
+        str++;
+    }
+    return result;
+}
 void delete_file(char *file_name, char *path)
 {
     char buffer[256];
@@ -173,48 +280,48 @@ int is_folder_empty(char *folder_path)
     else
         return 0;
 }
-void delete_empty_subdirs(char *path)
-{
-    char buffer[MAX_PATH];
-    DWORD length;
-    length = GetFullPathName(path, MAX_PATH, buffer, NULL);
-    if (length > 0 && length < MAX_PATH)
-    {
-        strcat(buffer, "\\*");
-        WIN32_FIND_DATA file_data;
-        HANDLE file_handle = FindFirstFile(buffer, &file_data);
-        if (file_handle != INVALID_HANDLE_VALUE)
-        {
-            do
-            {
-                if (file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
-                    strcmp(file_data.cFileName, ".") != 0 &&
-                    strcmp(file_data.cFileName, "..") != 0)
-                {
-                    char temp[MAX_PATH];
-                    strcpy(temp, buffer);
-                    temp[strlen(temp) - 1] = '\0';
-                    strcat(temp, file_data.cFileName);
-                    delete_empty_subdirs(temp);
-                }
-            } while (FindNextFile(file_handle, &file_data)); // Get the next subdirectory
-            FindClose(file_handle);
-        }
-        buffer[strlen(buffer) - 2] = '\0';
-        if (!RemoveDirectory(buffer))
-        {
-            DWORD error = GetLastError();
-            if (error != ERROR_DIR_NOT_EMPTY)
-            {
-                printf("Error: %lu\n", error);
-            }
-        }
-    }
-    else
-    {
-        printf("Error: %lu\n", GetLastError());
-    }
-}
+// void delete_empty_subdirs(char *path)
+// {
+//     char buffer[MAX_PATH];
+//     DWORD length;
+//     length = GetFullPathName(path, MAX_PATH, buffer, NULL);
+//     if (length > 0 && length < MAX_PATH)
+//     {
+//         strcat(buffer, "\\*");
+//         WIN32_FIND_DATA file_data;
+//         HANDLE file_handle = FindFirstFile(buffer, &file_data);
+//         if (file_handle != INVALID_HANDLE_VALUE)
+//         {
+//             do
+//             {
+//                 if (file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
+//                     strcmp(file_data.cFileName, ".") != 0 &&
+//                     strcmp(file_data.cFileName, "..") != 0)
+//                 {
+//                     char temp[MAX_PATH];
+//                     strcpy(temp, buffer);
+//                     temp[strlen(temp) - 1] = '\0';
+//                     strcat(temp, file_data.cFileName);
+//                     delete_empty_subdirs(temp);
+//                 }
+//             } while (FindNextFile(file_handle, &file_data)); // Get the next subdirectory
+//             FindClose(file_handle);
+//         }
+//         buffer[strlen(buffer) - 2] = '\0';
+//         if (!RemoveDirectory(buffer))
+//         {
+//             DWORD error = GetLastError();
+//             if (error != ERROR_DIR_NOT_EMPTY)
+//             {
+//                 printf("Error: %lu\n", error);
+//             }
+//         }
+//     }
+//     else
+//     {
+//         printf("Error: %lu\n", GetLastError());
+//     }
+// }
 int compare_files(char *path1, char *path2)
 {
     FILE *f1, *f2;
@@ -311,7 +418,7 @@ char *strrev(char *str)
     }
     return rev;
 }
-int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name)
+int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name) // may be it must be deleted
 {
     char search_path[MAX_PATH];
     sprintf(search_path, "%s\\*", path);
@@ -415,7 +522,7 @@ int dir_exist(char *name)
     }
     return 0;
 }
-void copy_global_to_all()
+void copy_global_to_all() // must be fixed to copy variables
 {
     char lines[MAX_SIZE];
     FILE *projects;
@@ -469,7 +576,7 @@ void create_global_config(int argc, char **argv)
         alias = strtok(NULL, ".");
         FILE *global_variable;
         global_variable = fopen("C:\\newgit\\GlobalVariables.txt", "a");
-        fprintf(global_variable, "%s %s\n", argv[4], alias);
+        fprintf(global_variable, "*%s*%s*\n", alias, argv[4]);
         free(alias);
     }
     else
@@ -505,8 +612,8 @@ void create_local_config(int argc, char **argv)
         alias = strtok(NULL, ".");
         FILE *local_variables;
         local_variables = fopen(personal_variables_path, "a");
-        fprintf(local_variables, "%s %s\n", argv[3], alias);
-        // must be checked that a alias exist or not
+        // must be checked command is valid
+        fprintf(local_variables, "*%s*%s*\n", alias, argv[3]);
         free(alias);
     }
     else
@@ -530,7 +637,7 @@ void run_init(int argc, char **argv)
         fclose(project_path_adding);
         system("mkdir ngit");
         system("attrib +h ngit");
-        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master*null > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt & echo No > LinkedCommits.txt & type nul > MessageShortcuts.txt");
+        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt & echo No > LinkedCommits.txt & type nul > MessageShortcuts.txt");
         copy_global_to_all();
     }
 }
@@ -782,7 +889,7 @@ void run_commit(char *message)
         time_t t = time(NULL);
         struct tm *tm = localtime(&t);
         char time_and_hour[64];
-        strftime(time_and_hour, sizeof(time_and_hour), "%Y-%m-%d %H:%M", tm);
+        strftime(time_and_hour, sizeof(time_and_hour), "%Y-%m-%d %H:%M:%S", tm);
         FILE *loq_file = fopen(local_or_global_path, "r");
         char loc_or_glob[10];
         fscanf(loq_file, "%[^\0]", loc_or_glob);
@@ -844,6 +951,243 @@ void run_commit(char *message)
     free(random_number);
     free(stage_commit_address);
 }
+void run_all_log()
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    while (one != NULL)
+    {
+        printf("%s\n", one);
+        one = strtok(NULL, "**********");
+    }
+    free(one);
+    free(reshte);
+}
+void run_n_log(int n)
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    int count = 0;
+    while (one != NULL, count < n)
+    {
+        count++;
+        printf("%s\n", one);
+        one = strtok(NULL, "**********");
+    }
+    free(one);
+    free(reshte);
+}
+void run_branch_log(char *branch)
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    char *copy = malloc(MAX_SIZE);
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        char *branch_line = malloc(MAX_SIZE);
+        branch_line = strstr(one, "branch:");
+        strcpy(branch_line, branch_line + 7);
+        if (strncmp(branch_line, branch, strlen(branch)) == 0)
+        {
+            printf("%s\n", copy);
+        }
+        one = strtok(NULL, "**********");
+        strcpy(copy, one);
+        free(branch_line);
+    }
+    free(copy);
+    free(one);
+    free(reshte);
+}
+void run_author_log(char *author)
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    char *copy = malloc(MAX_SIZE);
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        char *name_line = malloc(MAX_SIZE);
+        name_line = strstr(one, "name:");
+        strcpy(name_line, name_line + 5);
+        if (strncmp(name_line, author, strlen(author)) == 0)
+        {
+            printf("%s\n", copy);
+        }
+        one = strtok(NULL, "**********");
+        strcpy(copy, one);
+        free(name_line);
+    }
+    free(copy);
+    free(one);
+    free(reshte);
+}
+void run_since_log(char *time)
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    char *copy = malloc(MAX_SIZE);
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        char *date_line = malloc(MAX_SIZE);
+        date_line = strstr(one, "time:");
+        strcpy(date_line, date_line + 5);
+        date_line[19] = '\0';
+        int compare_times = date_str_cmp(date_line, time);
+        if (compare_times >= 0)
+        {
+            printf("%s\n", copy);
+        }
+        one = strtok(NULL, "**********");
+        strcpy(copy, one);
+        free(date_line);
+    }
+    free(copy);
+    free(one);
+    free(reshte);
+}
+void run_before_log(char *time)
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    char *copy = malloc(MAX_SIZE);
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        char *date_line = malloc(MAX_SIZE);
+        date_line = strstr(one, "time:");
+        strcpy(date_line, date_line + 5);
+        date_line[19] = '\0';
+        int compare_times = date_str_cmp(date_line, time);
+        if (compare_times <= 0)
+        {
+            printf("%s\n", copy);
+        }
+        one = strtok(NULL, "**********");
+        strcpy(copy, one);
+        free(date_line);
+    }
+    free(copy);
+    free(one);
+    free(reshte);
+}
+void run_word_log(char *word)
+{
+    FILE *logs = fopen(commits_path, "r");
+    char *reshte = malloc(10000);
+    fscanf(logs, "%[^\0]", reshte);
+    fclose(logs);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    char *copy = malloc(MAX_SIZE);
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        char *message_line = malloc(MAX_SIZE);
+        message_line = strstr(one, "message:");
+        int word_exist = search_word_in_sentence(message_line, word);
+        if (word_exist == 1)
+        {
+            printf("%s\n", copy);
+        }
+        one = strtok(NULL, "**********");
+        strcpy(copy, one);
+        free(message_line);
+    }
+    free(copy);
+    free(one);
+    free(reshte);
+}
+void run_many_word_log(int argc, char **argv) // must be completed, points
+{
+    char *reshte = malloc(10000);
+    char *message_line = malloc(MAX_SIZE);
+    char *copy = malloc(MAX_SIZE);
+    char *one = malloc(MAX_SIZE);
+    for (int i = 4; i < argc; i++)
+    {
+        FILE *logs = fopen(commits_path, "r");
+        fscanf(logs, "%[^\0]", reshte);
+        fclose(logs);
+        one = strtok(reshte, "**********");
+        strcpy(copy, one);
+        while (one != NULL)
+        {
+            message_line = strstr(one, "message:");
+            int word_exist = search_word_in_sentence(message_line, argv[i]);
+            if (word_exist == 1)
+            {
+                printf("%s\n", copy);
+            }
+            one = strtok(NULL, "**********");
+            strcpy(copy, one);
+        }
+    }
+    free(message_line);
+    free(copy);
+    free(one);
+    free(reshte);
+}
+void show_branches()
+{
+    FILE *branches = fopen(branches_path, "r");
+    char reshte[MAX_SIZE];
+    fscanf(branches, "%[^\0]", reshte);
+    fclose(branches);
+    printf(reshte);
+}
+void make_branches(char *branch_name)
+{
+    char *names = malloc(MAX_SIZE);
+    FILE *branches_reading = fopen(branches_path, "r");
+    fscanf(branches_reading, "%[^\0]", names);
+    fclose(branches_reading);
+    char *line = malloc(MAX_SIZE);
+    line = strtok(names, "\n");
+    while (line != NULL)
+    {
+        if (strncmp(line, branch_name, strlen(branch_name)) == 0)
+        {
+            printf("Error: branch exist");
+            return;
+        }
+        line = strtok(NULL, "\n");
+    }
+    FILE *branches = fopen(branches_path, "a");
+    fprintf(branches, "%s\n", branch_name);
+    fclose(branches);
+    FILE *now_branch = fopen(now_branch_path, "w");
+    fprintf(now_branch, "%s", branch_name);
+    fclose(now_branch);
+    free(line);
+    free(names);
+}
 int main(int argc, char **argv)
 {
     if ((strncmp(argv[0], "ngit", 4) == 0) && argc > 1)
@@ -865,7 +1209,7 @@ int main(int argc, char **argv)
         linked_commits_path = (char *)malloc(MAX_SIZE);
         char address[MAX_SIZE];
         GetCurrentDirectory(sizeof(address), address);
-        dir_exist("ngit");
+        int check = dir_exist("ngit");
         SetCurrentDirectory(address);
         strcpy(branches_path, project_path);
         strcpy(commits_path, project_path);
@@ -909,6 +1253,11 @@ int main(int argc, char **argv)
         strcat(commits_folder_path, "\\commits");
         strcat(message_shortcuts_path, "\\MessageShortcuts.txt");
         strcat(linked_commits_path, "\\LinkedCommits.txt");
+        if (check != 1)
+        {
+            printf("Error : you are not in project\n");
+            return 0;
+        }
         if ((strncmp(argv[1], "config", 6) == 0) && argc > 2)
         {
             if ((strncmp(argv[2], "-global", 7) == 0) && argc > 3)
@@ -952,9 +1301,108 @@ int main(int argc, char **argv)
             { // must be completed
             }
         }
-        else
+        else if ((strncmp(argv[1], "set", 3) == 0) && argc > 2) // must be changed and completed
         {
-        } // must be completed
+        }
+        else if ((strncmp(argv[1], "replace", 3) == 0) && argc > 2) // must be changed and completed
+        {
+        }
+        else if ((strncmp(argv[1], "remove", 3) == 0) && argc > 2) // must be changed and completed
+        {
+        }
+        else if ((strncmp(argv[1], "log", 3) == 0) && argc >= 2)
+        {
+            if (argc == 2)
+            {
+                run_all_log();
+            }
+            if (argc == 4 && (strncmp(argv[2], "-n", 2) == 0))
+            {
+                int number = char_to_int(argv[3]);
+                run_n_log(number);
+            }
+            if (argc == 4 && (strncmp(argv[2], "-branch", 7) == 0))
+            {
+                run_branch_log(argv[3]);
+            }
+            if (argc == 4 && (strncmp(argv[2], "-author", 7) == 0))
+            {
+                run_author_log(argv[3]);
+            }
+            if (argc == 4 && (strncmp(argv[2], "-since", 7) == 0))
+            {
+                run_since_log(argv[3]);
+            }
+            if (argc == 4 && (strncmp(argv[2], "-before", 7) == 0))
+            {
+                run_before_log(argv[3]);
+            }
+            if (argc == 4 && (strncmp(argv[2], "-search", 7) == 0))
+            {
+                run_word_log(argv[3]);
+            }
+            if (argc >= 5 && (strncmp(argv[2], "-search", 7) == 0) && (strncmp(argv[3], "-f", 2) == 0))
+            {
+                run_many_word_log(argc, argv);
+            }
+            // must be add serach word
+        }
+        else if ((strncmp(argv[1], "branch", 6) == 0) && argc == 2)
+        {
+            show_branches();
+        }
+        else if ((strncmp(argv[1], "branch", 6) == 0) && argc == 3)
+        {
+            make_branches(argv[2]);
+        }
+        else if (argc == 2)
+        {
+            FILE *open_global_variables = fopen(global_variables_path, "r");
+            char *lines_global_variables = malloc(MAX_SIZE);
+            fscanf(open_global_variables, "%[^\0]", lines_global_variables);
+            fclose(open_global_variables);
+            char *line_by_line = malloc(MAX_SIZE);
+            line_by_line = strtok(lines_global_variables, "\n");
+            char *alias_name = malloc(MAX_SIZE);
+            int exist = 0;
+            while (line_by_line != NULL)
+            {
+                alias_name = strtok(line_by_line, "*");
+                if (strncmp(argv[1], alias_name, strlen(argv[1])) == 0)
+                {
+                    alias_name = strtok(NULL, "*");
+                    system(alias_name);
+                    exist = 1;
+                    break;
+                }
+                line_by_line = strtok(NULL, "\n");
+            }
+            FILE *open_local_variables = fopen(personal_variables_path, "r");
+            char *lines_local_variables = malloc(MAX_SIZE);
+            fscanf(open_local_variables, "%[^\0]", lines_local_variables);
+            fclose(open_local_variables);
+            line_by_line = strtok(lines_local_variables, "\n");
+            while (line_by_line != NULL)
+            {
+                alias_name = strtok(line_by_line, "*");
+                if (strncmp(argv[1], alias_name, strlen(argv[1])) == 0)
+                {
+                    alias_name = strtok(NULL, "*");
+                    system(alias_name);
+                    exist = 1;
+                    break;
+                }
+                line_by_line = strtok(NULL, "\n");
+            }
+            if (!exist)
+            {
+                printf("Error : command not found. please put \"ngit\" in first of your command and type the rest of command.\n");
+            }
+            free(alias_name);
+            free(line_by_line);
+            free(lines_global_variables);
+            free(lines_local_variables);
+        }
     }
     else
     {

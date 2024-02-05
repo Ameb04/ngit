@@ -1,1 +1,1 @@
-argv_copy
+int is_folder_empty(char *folder_path)
