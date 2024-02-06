@@ -1,1 +1,3 @@
-int is_folder_empty(char *folder_path)
+char *cwd = malloc(MAX_SIZE);
+    getcwd(cwd, strlen(cwd));
+    debug(cwd);

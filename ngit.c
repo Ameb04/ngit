@@ -23,12 +23,142 @@ char *global_variables_path;
 char *personal_variables_path;
 char *local_or_global_path;
 char *now_branch_path;
-char *now_last_commits_path;
+char *files_address_paths;
 char *stage_case_path;
 char *tags_path;
 char *commits_folder_path;
 char *linked_commits_path;
 char *message_shortcuts_path;
+char *temp_stage;
+char *now_commit_path;
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+char *replace_word(const char *str, const char *old_word, const char *new_word)
+{
+    char *result;
+    int i, count;
+    int old_len;
+    int new_len;
+    int diff;
+    int len;
+    if (str == NULL || old_word == NULL || new_word == NULL)
+    {
+        printf("Error: Invalid parameters\n");
+        return NULL;
+    }
+    old_len = strlen(old_word);
+    new_len = strlen(new_word);
+    diff = new_len - old_len;
+    count = 0;
+    for (i = 0; str[i] != '\0'; i++)
+    {
+        if (strncmp(&str[i], old_word, old_len) == 0)
+        {
+            count++;
+            i += old_len - 1;
+        }
+    }
+    len = i + count * diff + 1;
+    result = (char *)malloc(len);
+    if (result == NULL)
+    {
+        printf("Error: Could not allocate memory for new string\n");
+        return NULL;
+    }
+    i = 0;
+    int j = 0;
+    while (str[i] != '\0')
+    {
+        if (strncmp(&str[i], old_word, old_len) == 0)
+        {
+            strncpy(&result[j], new_word, new_len);
+            i += old_len;
+            j += new_len;
+        }
+        else
+        {
+            result[j] = str[i];
+            i++;
+            j++;
+        }
+    }
+    result[j] = '\0';
+    return result;
+}
+int serach_in_stage(char *path)
+{
+    int exist = 0;
+    char *reshte = malloc(MAX_SIZE);
+    char *line = malloc(MAX_SIZE);
+    char *reshte_jadid = malloc(MAX_SIZE);
+    FILE *open_file_read_path = fopen(files_address_paths, "r");
+    fscanf(open_file_read_path, "%[^\0]", reshte);
+    fclose(open_file_read_path);
+    line = strtok(reshte, "\n");
+    while (line != NULL)
+    {
+        if (strncmp(path, line, strlen(path) - 1) == 0)
+        {
+            exist = 1;
+        }
+        line = strtok(NULL, "\n");
+    }
+    return exist;
+}
+void write_on_file_paths(char *path)
+{
+    int exist = 0;
+    char *reshte = malloc(MAX_SIZE);
+    char *line = malloc(MAX_SIZE);
+    char *reshte_jadid = malloc(MAX_SIZE);
+    FILE *open_file_read_path = fopen(files_address_paths, "r");
+    fscanf(open_file_read_path, "%[^\0]", reshte);
+    fclose(open_file_read_path);
+    line = strtok(reshte, "\n");
+    while (line != NULL)
+    {
+        if (strncmp(path, line, strlen(path) - 1) == 0)
+        {
+            exist = 1;
+        }
+        line = strtok(NULL, "\n");
+    }
+    if (!exist)
+    {
+        FILE *open_file_add_path = fopen(files_address_paths, "a");
+        fprintf(open_file_add_path, "%s\n", path);
+        fclose(open_file_add_path);
+    }
+}
+void delete_from_file_paths(char *path)
+{
+    char *reshte = malloc(MAX_SIZE);
+    char *line = malloc(MAX_SIZE);
+    char *reshte_jadid = malloc(MAX_SIZE);
+    FILE *open_file_read_path = fopen(files_address_paths, "r");
+    fscanf(open_file_read_path, "%[^\0]", reshte);
+    fclose(open_file_read_path);
+    line = strtok(reshte, "\n");
+    while (line != NULL)
+    {
+        if (strncmp(path, line, strlen(path) - 1) != 0)
+        {
+            strcat(reshte_jadid, line);
+            strcat(reshte_jadid, "\n");
+        }
+        line = strtok(NULL, "\n");
+    }
+    FILE *open_file_add_path = fopen(files_address_paths, "w");
+    fprintf(open_file_add_path, "%s", reshte_jadid);
+    fclose(open_file_add_path);
+    FILE *open_temp = fopen(temp_stage, "a");
+    fprintf(open_temp, "%s\n", path);
+    fclose(open_temp);
+    free(reshte);
+    free(line);
+    free(reshte_jadid);
+}
 int date_to_array(char *date, int arr[6])
 {
     int n = sscanf(date, "%d-%d-%d %d:%d:%d", &arr[0], &arr[1], &arr[2], &arr[3], &arr[4], &arr[5]);
@@ -163,13 +293,17 @@ void delete_folder(char *src_path, char *dst_path)
             continue;
         }
         char *src_file = (char *)malloc(strlen(src_path) + strlen(entry->d_name) + 2);
-        sprintf(src_file, "%s/%s", src_path, entry->d_name);
+        sprintf(src_file, "%s\\%s", src_path, entry->d_name);
         if (entry->d_type == DT_DIR)
         {
             delete_folder(src_file, dst_path);
         }
         else
         {
+            char fullpath[MAX_PATH];
+            DWORD length;
+            length = GetFullPathName(src_file, MAX_PATH, fullpath, NULL);
+            delete_from_file_paths(fullpath);
             src_file = strrev(src_file);
             src_file = strtok(src_file, "/");
             src_file = strrev(src_file);
@@ -187,7 +321,7 @@ void copy_file_to_hidden_folder(char *path1, char *path2)
     source = fopen(path1, "rb");
     if (source == NULL)
     {
-        printf("Error: cannot open source file %s\n", path1);
+        printf("Error : cannot open source file %s\n", path1);
         exit(1);
     }
     char *new_file = malloc(strlen(path2) + strlen(path1) + 2);
@@ -195,20 +329,13 @@ void copy_file_to_hidden_folder(char *path1, char *path2)
     strcat(new_file, "\\");
     char *file_name = malloc(MAX_SIZE);
     file_name = strrev(path1);
-    file_name = strtok(file_name, "/");
+    file_name = strtok(file_name, "\\");
     file_name = strrev(file_name);
-    if (file_name == NULL)
-    {
-        strcat(new_file, path1);
-    }
-    else
-    {
-        strcat(new_file, file_name);
-    }
+    strcat(new_file, file_name);
     target = fopen(new_file, "wb");
     if (target == NULL)
     {
-        printf("Error: cannot create target file %s\n", new_file);
+        printf("Error : cannot create target file %s\n", new_file);
         fclose(source);
         free(new_file);
         exit(1);
@@ -280,48 +407,6 @@ int is_folder_empty(char *folder_path)
     else
         return 0;
 }
-// void delete_empty_subdirs(char *path)
-// {
-//     char buffer[MAX_PATH];
-//     DWORD length;
-//     length = GetFullPathName(path, MAX_PATH, buffer, NULL);
-//     if (length > 0 && length < MAX_PATH)
-//     {
-//         strcat(buffer, "\\*");
-//         WIN32_FIND_DATA file_data;
-//         HANDLE file_handle = FindFirstFile(buffer, &file_data);
-//         if (file_handle != INVALID_HANDLE_VALUE)
-//         {
-//             do
-//             {
-//                 if (file_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY &&
-//                     strcmp(file_data.cFileName, ".") != 0 &&
-//                     strcmp(file_data.cFileName, "..") != 0)
-//                 {
-//                     char temp[MAX_PATH];
-//                     strcpy(temp, buffer);
-//                     temp[strlen(temp) - 1] = '\0';
-//                     strcat(temp, file_data.cFileName);
-//                     delete_empty_subdirs(temp);
-//                 }
-//             } while (FindNextFile(file_handle, &file_data)); // Get the next subdirectory
-//             FindClose(file_handle);
-//         }
-//         buffer[strlen(buffer) - 2] = '\0';
-//         if (!RemoveDirectory(buffer))
-//         {
-//             DWORD error = GetLastError();
-//             if (error != ERROR_DIR_NOT_EMPTY)
-//             {
-//                 printf("Error: %lu\n", error);
-//             }
-//         }
-//     }
-//     else
-//     {
-//         printf("Error: %lu\n", GetLastError());
-//     }
-// }
 int compare_files(char *path1, char *path2)
 {
     FILE *f1, *f2;
@@ -332,7 +417,7 @@ int compare_files(char *path1, char *path2)
     f2 = fopen(path2, "rb");
     if (f1 == NULL || f2 == NULL)
     {
-        printf("Error: Cannot open file %s or %s\n", path1, path2);
+        printf("Error : Cannot open file %s or %s\n", path1, path2);
         return -1;
     }
     while (1)
@@ -418,7 +503,7 @@ char *strrev(char *str)
     }
     return rev;
 }
-int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name) // may be it must be deleted
+int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name)
 {
     char search_path[MAX_PATH];
     sprintf(search_path, "%s\\*", path);
@@ -426,7 +511,7 @@ int check_folder_of_file_exist_in_now_and_subdirectories(char *path, char *name)
     HANDLE handle = FindFirstFile(search_path, &data);
     if (handle == INVALID_HANDLE_VALUE)
     {
-        printf("Error: Unable to open directory %s\n", path);
+        printf("Error : Unable to open directory %s\n", path);
         return -1;
     }
     do
@@ -473,13 +558,14 @@ void copy_folder(char *src_path, char *dst_path)
             continue;
         }
         char *src_file = (char *)malloc(strlen(src_path) + strlen(entry->d_name) + 2);
-        sprintf(src_file, "%s/%s", src_path, entry->d_name);
+        sprintf(src_file, "%s\\%s", src_path, entry->d_name);
         if (entry->d_type == DT_DIR)
         {
             copy_folder(src_file, dst_path);
         }
         else
         {
+            write_on_file_paths(src_file);
             copy_file_to_hidden_folder(src_file, dst_path);
         }
         free(src_file);
@@ -637,157 +723,162 @@ void run_init(int argc, char **argv)
         fclose(project_path_adding);
         system("mkdir ngit");
         system("attrib +h ngit");
-        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > NowLastCommits.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt & echo No > LinkedCommits.txt & type nul > MessageShortcuts.txt");
+        system("cd ngit & type nul > PersonalVariables.txt & type nul > PersonalUser.txt & echo 1 > StageCase.txt & echo master > Branches.txt & type nul > Commits.txt & mkdir commits & type nul > FilePaths.txt & echo master > NowBranch.txt & type nul > LocalOrGlobal.txt & type nul > Tags.txt & echo No > LinkedCommits.txt & type nul > MessageShortcuts.txt & type nul > TempForStage.txt & type nul > NowCommit.txt");
         copy_global_to_all();
     }
 }
-void add_to_stage(int argc, char **argv)
+void add_to_stage(int argc, char **argv, int x)
 {
     char address[MAX_SIZE];
     GetCurrentDirectory(sizeof(address), address);
-    int is_project = dir_exist("ngit");
-    SetCurrentDirectory(address);
     FILE *stagecase = fopen(stage_case_path, "r");
     char is_commited[MAX_SIZE];
     fscanf(stagecase, "%[^\0]", is_commited);
     fclose(stagecase);
-    if (is_project)
+    if (strncmp(is_commited, "1", 1) == 0)
     {
-        if (strncmp(is_commited, "1", 1) == 0)
+        srand(time(NULL));
+        int random_number = rand() % 100000 + 1234567;
+        stagecase = fopen(stage_case_path, "w");
+        fprintf(stagecase, "%d %d", 0, random_number); // when commited must be 1
+        fclose(stagecase);
+        char random[MAX_SIZE];
+        sprintf(random, "%d", random_number);
+        char location[MAX_SIZE];
+        strcpy(location, project_path);
+        strcat(location, "\\ngit");
+        SetCurrentDirectory(location);
+        mkdir(random);
+        SetCurrentDirectory(address);
+        int result = 0;
+        strcat(location, "\\");
+        strcat(location, random);
+        for (int i = x; i < argc; i++)
         {
-            srand(time(NULL));
-            int random_number = rand() % 100000 + 1234567;
-            stagecase = fopen(stage_case_path, "w");
-            fprintf(stagecase, "%d %d", 0, random_number); // when commited must be 1
-            fclose(stagecase);
-            char random[MAX_SIZE];
-            sprintf(random, "%d", random_number);
-            char location[MAX_SIZE];
-            strcpy(location, project_path);
-            strcat(location, "\\ngit");
-            SetCurrentDirectory(location);
-            mkdir(random);
-            SetCurrentDirectory(address);
-            int result = 0;
-            strcat(location, "\\");
-            strcat(location, random);
-            for (int i = 2; i < argc; i++)
+            int is_file = 0;
+            if (strchr(argv[i], '.') != NULL)
             {
-                int is_file = 0;
-                if (strchr(argv[i], '.') != NULL)
+                is_file = 1;
+            }
+            if (is_file)
+            {
+                if (access(argv[i], F_OK) == 0)
                 {
-                    is_file = 1;
-                }
-                if (is_file)
-                {
-                    if (access(argv[i], F_OK) == 0)
-                    {
-                        // CopyFileToHiddenFolder(complete_path, location);
-                        copy_file_to_hidden_folder(argv[i], location);
-                    }
-                    else
-                    {
-                        printf("Error : file not found\n");
-                    }
+                    char fullpath[MAX_PATH];
+                    DWORD length;
+                    length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+                    write_on_file_paths(fullpath);
+                    copy_file_to_hidden_folder(fullpath, location);
                 }
                 else
                 {
-                    if (access(argv[i], F_OK) == 0)
-                    {
-
-                        copy_folder(argv[i], location);
-                    }
-                    else
-                    {
-                        printf("Error : folder not found\n");
-                    }
+                    printf("Error : file not found\n");
                 }
             }
-        }
-        else if (strncmp(is_commited, "0", 1) == 0)
-        {
-            char *reshte = strtok(is_commited, " ");
-            reshte = strtok(NULL, " ");
-            char random[MAX_SIZE] = "\\";
-            sprintf(random + 1, "%s", reshte);
-            char location[MAX_SIZE];
-            strcpy(location, project_path);
-            strcat(location, "\\ngit\\");
-            strcat(location, is_commited + 2);
-            int result = 0;
-            for (int i = 2; i < argc; i++)
+            else
             {
-                int is_file = 0;
-                if (strchr(argv[i], '.') != NULL)
+                if (access(argv[i], F_OK) == 0)
                 {
-                    is_file = 1;
-                }
-                if (is_file)
-                {
-                    int added_in_previos = check_folder_of_file_exist_in_now_and_subdirectories(location, argv[i]);
-                    if (added_in_previos)
-                    {
-                        char *argv_copy = malloc(MAX_SIZE);
-                        strcpy(argv_copy, argv[i]);
-                        argv_copy = strrev(argv_copy);
-                        char *token = strtok(argv_copy, "\\");
-                        if (token == NULL)
-                        {
-                            strcpy(argv_copy, argv[i]);
-                        }
-                        else
-                        {
-                            argv_copy = strrev(argv_copy);
-                        }
-                        char absolute_file_path[MAX_PATH];
-                        DWORD length;
-                        LPTSTR fileName;
-                        length = GetFullPathName(argv_copy, MAX_PATH, absolute_file_path, &fileName);
-                        char *file_full_path = find_file_path(location, argv_copy);
-                        if (length == 0)
-                        {
-                            printf("Error: %lu\n", GetLastError());
-                        }
-                        else
-                        {
-                            int is_change = compare_files(file_full_path, absolute_file_path);
-                            if (is_change != 0)
-                            {
-                                if (access(argv[i], F_OK) == 0)
-                                {
-                                    // CopyFileToHiddenFolder(absolute_file_path, file_full_path);
-                                    copy_file_to_hidden_folder(argv[i], location);
-                                }
-                            }
-                        }
-                        free(argv_copy);
-                    }
-                    else
-                    {
-                        if (access(argv[i], F_OK) == 0)
-                        {
-                            // CopyFileToHiddenFolder(argv[i], location);
-                            copy_file_to_hidden_folder(argv[i], location);
-                        }
-                    }
+                    char fullpath[MAX_PATH];
+                    DWORD length;
+                    length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+                    copy_folder(argv[i], location);
                 }
                 else
                 {
-                    if (access(argv[i], F_OK) == 0)
-                    {
-                        copy_folder(argv[i], location);
-                    }
-                    else
-                    {
-                        printf("Error : folder not found\n");
-                    }
+                    printf("Error : folder not found\n");
                 }
             }
         }
     }
-    else
+    else if (strncmp(is_commited, "0", 1) == 0)
     {
-        printf("Error : you are not in project folder.\n");
+        char *reshte = strtok(is_commited, " ");
+        reshte = strtok(NULL, " ");
+        char random[MAX_SIZE] = "\\";
+        sprintf(random + 1, "%s", reshte);
+        char location[MAX_SIZE];
+        strcpy(location, project_path);
+        strcat(location, "\\ngit\\");
+        strcat(location, is_commited + 2);
+        int result = 0;
+        for (int i = x; i < argc; i++)
+        {
+            int is_file = 0;
+            if (strchr(argv[i], '.') != NULL)
+            {
+                is_file = 1;
+            }
+            if (is_file)
+            {
+                int added_in_previos = check_folder_of_file_exist_in_now_and_subdirectories(location, argv[i]);
+                if (added_in_previos)
+                {
+                    char *argv_copy = malloc(MAX_SIZE);
+                    strcpy(argv_copy, argv[i]);
+                    argv_copy = strrev(argv_copy);
+                    char *token = strtok(argv_copy, "\\");
+                    if (token == NULL)
+                    {
+                        strcpy(argv_copy, argv[i]);
+                    }
+                    else
+                    {
+                        argv_copy = strrev(argv_copy);
+                    }
+                    char absolute_file_path[MAX_PATH];
+                    DWORD length;
+                    LPTSTR fileName;
+                    length = GetFullPathName(argv_copy, MAX_PATH, absolute_file_path, &fileName);
+                    char *file_full_path = find_file_path(location, argv_copy);
+                    if (length == 0)
+                    {
+                        printf("Error : %lu\n", GetLastError());
+                    }
+                    else
+                    {
+                        int is_change = compare_files(file_full_path, absolute_file_path);
+                        if (is_change != 0)
+                        {
+                            if (access(argv[i], F_OK) == 0)
+                            {
+                                char fullpath[MAX_PATH];
+                                DWORD length;
+                                length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+                                write_on_file_paths(fullpath);
+                                copy_file_to_hidden_folder(fullpath, location);
+                            }
+                        }
+                    }
+                    free(argv_copy);
+                }
+                else
+                {
+                    if (access(argv[i], F_OK) == 0)
+                    {
+                        char fullpath[MAX_PATH];
+                        DWORD length;
+                        length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+                        write_on_file_paths(fullpath);
+                        copy_file_to_hidden_folder(fullpath, location);
+                    }
+                }
+            }
+            else
+            {
+                if (access(argv[i], F_OK) == 0)
+                {
+                    char fullpath[MAX_PATH];
+                    DWORD length;
+                    length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+                    copy_folder(argv[i], location);
+                }
+                else
+                {
+                    printf("Error : folder not found\n");
+                }
+            }
+        }
     }
 }
 void reset_staging(int argc, char **argv)
@@ -812,6 +903,10 @@ void reset_staging(int argc, char **argv)
     {
         if (strchr(argv[i], '.') != NULL)
         {
+            char fullpath[MAX_PATH];
+            DWORD length;
+            length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+            delete_from_file_paths(fullpath);
             char *address_reverse = malloc(MAX_SIZE);
             address_reverse = strrev(argv[i]);
             address_reverse = strtok(address_reverse, "\\");
@@ -822,7 +917,6 @@ void reset_staging(int argc, char **argv)
             }
             else
             {
-
                 delete_file(address_reverse, dir_address);
             }
             free(address_reverse);
@@ -833,7 +927,10 @@ void reset_staging(int argc, char **argv)
             strcpy(path, project_path);
             strcat(path, "\\ngit\\");
             strcat(path, random_number);
-            delete_folder(argv[i], path);
+            char fullpath[MAX_PATH];
+            DWORD length;
+            length = GetFullPathName(argv[i], MAX_PATH, fullpath, NULL);
+            delete_folder(fullpath, path);
             free(path);
         }
         free(line);
@@ -853,7 +950,7 @@ void run_commit(char *message)
     random_number = strtok(NULL, " ");
     if (random_number == NULL)
     {
-        printf("Error : you dont have add any things");
+        printf("Error : you dont have add any things\n");
         return;
     }
     char *stage_commit_address = malloc(MAX_SIZE);
@@ -863,10 +960,13 @@ void run_commit(char *message)
     int is_empty = is_folder_empty(stage_commit_address);
     if (is_empty)
     {
-        printf("Error: you have not add any things");
+        printf("Error : you have not add any things\n");
     }
     else
     {
+        char *sys_com = malloc(MAX_SIZE);
+        sprintf(sys_com, "copy %s\\ngit\\FilePaths.txt %s", project_path, stage_commit_address);
+        system(sys_com);
         char *commit_places = malloc(MAX_SIZE);
         strcpy(commit_places, project_path);
         strcat(commit_places, "\\ngit\\commits\\");
@@ -925,31 +1025,211 @@ void run_commit(char *message)
         if (strncmp(matn, "No", 2) == 0)
         {
             FILE *link = fopen(linked_commits_path, "w");
-            fprintf(link, "#%s*%s*%s#", random_number, "NULL", branch_in_now);
+            fprintf(link, "#*%s*%s*%s*#", branch_in_now, random_number, "NULL");
             fclose(link);
         }
         else
         {
+            FILE *logs = fopen(commits_path, "r");
+            char *reshte = malloc(10000);
+            fscanf(logs, "%[^\0]", reshte);
+            fclose(logs);
+            char *one = malloc(MAX_SIZE);
+            one = strtok(reshte, "**********");
+            char *copy = malloc(MAX_SIZE);
+            strcpy(copy, one);
+            int exist = 0;
+            while (one != NULL)
+            {
+                char *branch_line = malloc(MAX_SIZE);
+                branch_line = strstr(one, "branch:");
+                strcpy(branch_line, branch_line + 7);
+                if (strncmp(branch_line, branch_in_now, strlen(branch_in_now)) == 0)
+                {
+                    exist = 1;
+                    break;
+                }
+                one = strtok(NULL, "**********");
+                strcpy(copy, one);
+                free(branch_line);
+            }
+            free(copy);
+            free(one);
+            free(reshte);
             char *line = malloc(MAX_SIZE);
             line = strrev(matn);
             line = strtok(line, "#");
-            line = strrev(line);
-            line = strtok(line, "*");
+            char *reverse = malloc(MAX_SIZE);
+            char *check_branch = malloc(MAX_SIZE);
+            if (exist == 1)
+            {
+                while (line != NULL)
+                {
+                    reverse = strrev(line);
+                    check_branch = strtok(reverse, "*");
+                    if (strncmp(branch_in_now, check_branch, strlen(branch_in_now)) == 0)
+                    {
+                        check_branch = strtok(NULL, "*");
+                        break;
+                    }
+                    line = strtok(NULL, "#");
+                }
+            }
+            else
+            {
+                reverse = strrev(line);
+                check_branch = strtok(reverse, "*");
+                check_branch = strtok(NULL, "*");
+            }
             FILE *link = fopen(linked_commits_path, "a");
-            fprintf(link, "%s*%s*%s#", random_number, line, branch_in_now);
+            fprintf(link, "%s*%s*%s#", branch_in_now, random_number, check_branch);
             fclose(link);
             free(line);
+            free(reverse);
+            free(check_branch);
         }
         char del[MAX_SIZE];
         strcpy(del, "rmdir /s /q ");
         strcat(del, stage_commit_address);
         system(del);
+        FILE *del_temp = fopen(temp_stage, "w");
+        fclose(del_temp);
+        FILE *del_file_path = fopen(files_address_paths, "w");
+        fclose(del_file_path);
+        FILE *nowcommit = fopen(now_commit_path, "w");
+        fprintf(nowcommit, "%s", random_number);
+        fclose(nowcommit);
+        fclose(del_temp);
         free(commit_places);
         free(command);
+        free(sys_com);
     }
     free(line);
     free(random_number);
     free(stage_commit_address);
+}
+void show_status()
+{
+    char *nowcommit = malloc(MAX_SIZE);
+    FILE *open_now_commit = fopen(now_commit_path, "r");
+    fscanf(open_now_commit, "%s", nowcommit);
+    fclose(open_now_commit);
+    char *reshte = malloc(MAX_SIZE);
+    debug(linked_commits_path);
+    FILE *open_link = fopen(linked_commits_path, "r");
+    fscanf(open_link, "%[^\0]", reshte);
+    fclose(open_link);
+    char *line = malloc(MAX_SIZE);
+    line = strtok(reshte, "#");
+    char *token = malloc(MAX_SIZE);
+    char *previous_commit_number = malloc(MAX_SIZE);
+    debug(reshte);
+    while (line != NULL)
+    {
+        printf("line:\n");
+        debug(line);
+        token = strtok(line, "*");
+        token = strtok(NULL, "*");
+        printf("nowcheck:\n");
+        printf("token:\n");
+        debug(token);
+        if (strncmp(token, nowcommit, strlen(nowcommit)) == 0)
+        {
+            token = strtok(NULL, "*");
+            printf("previos:\n");
+            strcpy(previous_commit_number, token);
+            break;
+        }
+        line = strtok(NULL, "#");
+    }
+    char *previous_commit_path = malloc(MAX_SIZE);
+    sprintf(previous_commit_path, "%s\\ngit\\%s", project_path, previous_commit_number);
+    debug(previous_commit_path);
+    DIR *dir = opendir(".");
+    if (dir == NULL)
+    {
+        perror("opendir");
+        return;
+    }
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || entry->d_type == DT_DIR)
+        {
+            continue;
+        }
+        char absolute_file_path[MAX_PATH];
+        DWORD length;
+        LPTSTR fileName;
+        length = GetFullPathName(entry->d_name, MAX_PATH, absolute_file_path, &fileName);
+        debug(absolute_file_path);
+        char address[MAX_SIZE];
+        GetCurrentDirectory(sizeof(address), address);
+        SetCurrentDirectory(previous_commit_path);
+        int result = access(entry->d_name, F_OK);
+        SetCurrentDirectory(address);
+        if (result != 0)
+        {
+            int exist = serach_in_stage(absolute_file_path);
+            printf("%s ", entry->d_name);
+            if (exist)
+            {
+                printf("+");
+            }
+            else
+            {
+                printf("-");
+            }
+            printf("A\n");
+        }
+        else
+        {
+            strcat(previous_commit_path, "\\");
+            strcat(previous_commit_path, previous_commit_number);
+            strcat(address, "\\");
+            strcat(address, entry->d_name);
+            debug(previous_commit_path);
+            debug(address);
+            int compare = compare_files(address, previous_commit_path);
+            if (compare != 0)
+            {
+                int exist = serach_in_stage(absolute_file_path);
+                printf("%s ", entry->d_name);
+                if (exist)
+                {
+                    printf("+");
+                }
+                else
+                {
+                    printf("-");
+                }
+                printf("M\n");
+            }
+        }
+    }
+    closedir(dir);
+    dir = opendir(previous_commit_path);
+    if (dir == NULL)
+    {
+        perror("opendir");
+        return;
+    }
+    struct dirent *entry2;
+    while ((entry2 = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry2->d_name, ".") == 0 || strcmp(entry2->d_name, "..") == 0 || entry2->d_type == DT_DIR)
+        {
+            continue;
+        }
+        int result = access(entry2->d_name, F_OK);
+        if (result != 0)
+        {
+            printf("%s ", entry2->d_name);
+            printf("-");
+            printf("D\n");
+        }
+    }
+    closedir(dir);
 }
 void run_all_log()
 {
@@ -1174,7 +1454,7 @@ void make_branches(char *branch_name)
     {
         if (strncmp(line, branch_name, strlen(branch_name)) == 0)
         {
-            printf("Error: branch exist");
+            printf("Error: branch exist\n");
             return;
         }
         line = strtok(NULL, "\n");
@@ -1183,10 +1463,499 @@ void make_branches(char *branch_name)
     fprintf(branches, "%s\n", branch_name);
     fclose(branches);
     FILE *now_branch = fopen(now_branch_path, "w");
-    fprintf(now_branch, "%s", branch_name);
+    fprintf(now_branch, "%s\n", branch_name);
     fclose(now_branch);
     free(line);
     free(names);
+}
+void run_tag(int argc, char **argv)
+{
+    char *nowcommit = malloc(MAX_SIZE);
+    FILE *open_now_commit = fopen(now_commit_path, "r");
+    fscanf(open_now_commit, "%s", nowcommit);
+    fclose(open_now_commit);
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    char time_and_hour[64];
+    strftime(time_and_hour, sizeof(time_and_hour), "%Y-%m-%d %H:%M:%S", tm);
+    FILE *loq_file = fopen(local_or_global_path, "r");
+    char loc_or_glob[10];
+    fscanf(loq_file, "%[^\0]", loc_or_glob);
+    fclose(loq_file);
+    char user_name_and_user_email[MAX_SIZE];
+    if (strncmp(loc_or_glob, "1", 1) == 0)
+    {
+        FILE *loq_file = fopen(global_user_path, "r");
+        fscanf(loq_file, "%[^\0]", user_name_and_user_email);
+        fclose(loq_file);
+    }
+    else if (strncmp(loc_or_glob, "0", 1) == 0)
+    {
+        FILE *loq_file = fopen(personal_user_path, "r");
+        fscanf(loq_file, "%[^\0]", user_name_and_user_email);
+        fclose(loq_file);
+    }
+    char *reshte_jadid = malloc(MAX_SIZE);
+    char reshte[MAX_SIZE];
+    FILE *open_tag = fopen(tags_path, "r");
+    fscanf(open_tag, "%[^\0]", reshte);
+    fclose(open_tag);
+    int exist = 0;
+    if (strstr(reshte, argv[3]) != NULL)
+    {
+        exist = 1;
+    }
+    if ((strncmp(argv[4], "-m", 2) == 0) && argc > 5)
+    {
+        if ((strncmp(argv[6], "-c", 2) == 0) && argc > 7)
+        {
+            if ((strncmp(argv[8], "-f", 2) == 0) && argc == 9)
+            {
+                if (exist)
+                {
+                    char *one = malloc(MAX_SIZE);
+                    one = strtok(reshte, "**********");
+                    char *copy = malloc(MAX_SIZE);
+                    strcpy(copy, one);
+                    while (one != NULL)
+                    {
+                        char *tag_line = malloc(MAX_SIZE);
+                        tag_line = strstr(one, "tag:");
+                        strcpy(tag_line, tag_line + 4);
+                        if (strncmp(tag_line, argv[3], strlen(argv[3])) == 0)
+                        {
+                            char *make = malloc(MAX_SIZE);
+                            sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:%s\n**********\n", argv[3], argv[7], user_name_and_user_email, time_and_hour, argv[5]);
+                            strcat(reshte_jadid, make);
+                        }
+                        else
+                        {
+                            char *make = malloc(MAX_SIZE);
+                            sprintf(make, "%s**********\n", copy);
+                            strcat(reshte_jadid, make);
+                        }
+                        one = strtok(NULL, "**********");
+                        strcpy(copy, one);
+                        free(tag_line);
+                    }
+                    FILE *open_tag = fopen(tags_path, "w");
+                    fprintf(open_tag, "%s", reshte_jadid);
+                    fclose(open_tag);
+                    free(copy);
+                    free(one);
+                }
+                else
+                {
+                    char *make = malloc(MAX_SIZE);
+                    sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:%s\n**********\n", argv[3], argv[7], user_name_and_user_email, time_and_hour, argv[5]);
+                    strcat(reshte_jadid, make);
+                    FILE *open_tag = fopen(tags_path, "a");
+                    fprintf(open_tag, "%s", reshte_jadid);
+                    fclose(open_tag);
+                }
+            }
+            else if (argc == 8)
+            {
+                if (exist)
+                {
+                    printf("Error : tag name existance\n");
+                }
+                else
+                {
+                    char *make = malloc(MAX_SIZE);
+                    sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:%s\n**********\n", argv[3], argv[7], user_name_and_user_email, time_and_hour, argv[5]);
+                    strcat(reshte_jadid, make);
+                    FILE *open_tag = fopen(tags_path, "a");
+                    fprintf(open_tag, "%s", reshte_jadid);
+                    fclose(open_tag);
+                }
+            }
+        }
+        else if (strncmp(argv[6], "-f", 2) == 0 && argc == 7)
+        {
+            if (exist)
+            {
+                char *one = malloc(MAX_SIZE);
+                one = strtok(reshte, "**********");
+                char *copy = malloc(MAX_SIZE);
+                strcpy(copy, one);
+                while (one != NULL)
+                {
+                    char *tag_line = malloc(MAX_SIZE);
+                    tag_line = strstr(one, "tag:");
+                    strcpy(tag_line, tag_line + 4);
+                    if (strncmp(tag_line, argv[3], strlen(argv[3])) == 0)
+                    {
+                        char *make = malloc(MAX_SIZE);
+                        sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:%s\n**********\n", argv[3], nowcommit, user_name_and_user_email, time_and_hour, argv[5]);
+                        strcat(reshte_jadid, make);
+                    }
+                    else
+                    {
+                        char *make = malloc(MAX_SIZE);
+                        sprintf(make, "%s**********\n", copy);
+                        strcat(reshte_jadid, make);
+                    }
+                    one = strtok(NULL, "**********");
+                    strcpy(copy, one);
+                    free(tag_line);
+                }
+                FILE *open_tag = fopen(tags_path, "w");
+                fprintf(open_tag, "%s", reshte_jadid);
+                fclose(open_tag);
+                free(copy);
+                free(one);
+            }
+            else
+            {
+                char *make = malloc(MAX_SIZE);
+                sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:%s\n**********\n", argv[3], nowcommit, user_name_and_user_email, time_and_hour, argv[5]);
+                strcat(reshte_jadid, make);
+                FILE *open_tag = fopen(tags_path, "a");
+                fprintf(open_tag, "%s", reshte_jadid);
+                fclose(open_tag);
+            }
+        }
+        else if (argc == 6)
+        {
+            if (exist)
+            {
+                printf("Error : tag name existance\n");
+            }
+            else
+            {
+                char *make = malloc(MAX_SIZE);
+                sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:%s\n**********\n", argv[3], nowcommit, user_name_and_user_email, time_and_hour, argv[5]);
+                strcat(reshte_jadid, make);
+                FILE *open_tag = fopen(tags_path, "a");
+                fprintf(open_tag, "%s", reshte_jadid);
+                fclose(open_tag);
+            }
+        }
+    }
+    else if ((strncmp(argv[4], "-c", 2) == 0) && argc > 5)
+    {
+
+        if ((strncmp(argv[6], "-f", 2) == 0) && argc == 7)
+        {
+            if (exist)
+            {
+                char *one = malloc(MAX_SIZE);
+                one = strtok(reshte, "**********");
+                char *copy = malloc(MAX_SIZE);
+                strcpy(copy, one);
+                while (one != NULL)
+                {
+                    char *tag_line = malloc(MAX_SIZE);
+                    tag_line = strstr(one, "tag:");
+                    strcpy(tag_line, tag_line + 4);
+                    if (strncmp(tag_line, argv[3], strlen(argv[3])) == 0)
+                    {
+                        char *make = malloc(MAX_SIZE);
+                        sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:\n**********\n", argv[3], argv[5], user_name_and_user_email, time_and_hour);
+                        strcat(reshte_jadid, make);
+                    }
+                    else
+                    {
+                        char *make = malloc(MAX_SIZE);
+                        sprintf(make, "%s**********\n", copy);
+                        strcat(reshte_jadid, make);
+                    }
+                    one = strtok(NULL, "**********");
+                    strcpy(copy, one);
+                    free(tag_line);
+                }
+                FILE *open_tag = fopen(tags_path, "w");
+                fprintf(open_tag, "%s", reshte_jadid);
+                fclose(open_tag);
+                free(copy);
+                free(one);
+            }
+            else
+            {
+                char *make = malloc(MAX_SIZE);
+                sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:\n**********\n", argv[3], argv[5], user_name_and_user_email, time_and_hour);
+                strcat(reshte_jadid, make);
+                FILE *open_tag = fopen(tags_path, "a");
+                fprintf(open_tag, "%s", reshte_jadid);
+                fclose(open_tag);
+            }
+        }
+        else
+        {
+            if (exist)
+            {
+                printf("Error : tag name existance\n");
+            }
+            else
+            {
+                char *make = malloc(MAX_SIZE);
+                sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:\n**********\n", argv[3], argv[5], user_name_and_user_email, time_and_hour);
+                strcat(reshte_jadid, make);
+                FILE *open_tag = fopen(tags_path, "a");
+                fprintf(open_tag, "%s", reshte_jadid);
+                fclose(open_tag);
+            }
+        }
+    }
+    else if ((strncmp(argv[4], "-f", 2) == 0) && argc == 5)
+    {
+        if (exist)
+        {
+            char *one = malloc(MAX_SIZE);
+            one = strtok(reshte, "**********");
+            char *copy = malloc(MAX_SIZE);
+            strcpy(copy, one);
+            while (one != NULL)
+            {
+                char *tag_line = malloc(MAX_SIZE);
+                tag_line = strstr(one, "tag:");
+                strcpy(tag_line, tag_line + 4);
+                if (strncmp(tag_line, argv[3], strlen(argv[3])) == 0)
+                {
+                    char *make = malloc(MAX_SIZE);
+                    sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:\n**********\n", argv[3], nowcommit, user_name_and_user_email, time_and_hour);
+                    strcat(reshte_jadid, make);
+                }
+                else
+                {
+                    char *make = malloc(MAX_SIZE);
+                    sprintf(make, "%s**********\n", copy);
+                    strcat(reshte_jadid, make);
+                }
+                one = strtok(NULL, "**********");
+                strcpy(copy, one);
+                free(tag_line);
+            }
+            FILE *open_tag = fopen(tags_path, "w");
+            fprintf(open_tag, "%s", reshte_jadid);
+            fclose(open_tag);
+            free(copy);
+            free(one);
+        }
+        else
+        {
+            char *make = malloc(MAX_SIZE);
+            sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:\n**********\n", argv[3], nowcommit, user_name_and_user_email, time_and_hour);
+            strcat(reshte_jadid, make);
+            FILE *open_tag = fopen(tags_path, "a");
+            fprintf(open_tag, "%s", reshte_jadid);
+            fclose(open_tag);
+        }
+    }
+    else if (argc == 4)
+    {
+        if (exist)
+        {
+            printf("Error : tag name existance\n");
+        }
+        else
+        {
+            char *make = malloc(MAX_SIZE);
+            sprintf(make, "tag:%s\ncommit:%s\n%s\ndate:%s\nmessage:\n**********\n", argv[3], nowcommit, user_name_and_user_email, time_and_hour);
+            strcat(reshte_jadid, make);
+            FILE *open_tag = fopen(tags_path, "a");
+            fprintf(open_tag, "%s", reshte_jadid);
+            fclose(open_tag);
+        }
+    }
+}
+void tag_show()
+{
+    char *reshte = malloc(MAX_SIZE);
+    char *reshte_jadid = malloc(MAX_SIZE);
+    char lines[MAX_SIZE][MAX_SIZE];
+    FILE *open_tag = fopen(tags_path, "r");
+    fscanf(open_tag, "%[^\0]", reshte);
+    fclose(open_tag);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    int x = 0;
+    while (one != NULL)
+    {
+        strcpy(lines[x], one);
+        x++;
+        one = strtok(NULL, "**********");
+    }
+    x--;
+    for (int i = 0; i < x - 1; i++)
+    {
+        for (int j = 0; j < x - i - 1; i++)
+        {
+            char *first = malloc(MAX_SIZE);
+            first = strstr(lines[j], "tag:");
+            char *second = malloc(MAX_SIZE);
+            second = strstr(lines[j + 1], "tag:");
+            if (first[4] > second[4])
+            {
+                char temp[MAX_SIZE];
+                strcpy(temp, lines[j]);
+                strcpy(lines[j], lines[j + 1]);
+                strcpy(lines[j + 1], temp);
+            }
+            free(first);
+            free(second);
+        }
+    }
+    for (int i = 0; i < x; i++)
+    {
+        printf("%s", lines[i]);
+    }
+    free(one);
+}
+void show_tag_name(char *name)
+{
+    char reshte[MAX_SIZE];
+    FILE *open_tag = fopen(tags_path, "r");
+    fscanf(open_tag, "%[^\0]", reshte);
+    fclose(open_tag);
+    char *one = malloc(MAX_SIZE);
+    one = strtok(reshte, "**********");
+    char *copy = malloc(MAX_SIZE);
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        char *tag_line = malloc(MAX_SIZE);
+        tag_line = strstr(one, "tag:");
+        strcpy(tag_line, tag_line + 4);
+        if (strncmp(tag_line, name, strlen(name)) == 0)
+        {
+            printf("%s\n", copy);
+        }
+        one = strtok(NULL, "**********");
+        strcpy(copy, one);
+        free(tag_line);
+    }
+    free(copy);
+    free(one);
+}
+void diff_files(char *file1, char *file2, int start_file1, int start_file2, int end_file1, int end_file2)
+{
+    char reshte_1[MAX_SIZE];
+    char reshte_2[MAX_SIZE];
+    FILE *first = fopen(file1, "r");
+    FILE *second = fopen(file2, "r");
+    for (int i = 0; i < start_file1; i++)
+    {
+        fgets(reshte_1, strlen(reshte_1), first);
+    }
+    for (int i = 0; i < start_file2; i++)
+    {
+        fgets(reshte_2, strlen(reshte_2), second);
+    }
+    while (reshte_1 != NULL && reshte_2 != NULL && start_file1 <= end_file1 && start_file2 <= end_file2)
+    {
+        if (strcmp(reshte_1, reshte_2) != 0)
+        {
+            printf("file:%s_line:%d\n", file1, start_file1);
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
+            printf("%s", reshte_1);
+            SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+            printf("file:%s_line:%d\n", file2, start_file2);
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE);
+            printf("%s", reshte_2);
+            SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+        }
+        start_file1++;
+        start_file2++;
+        fgets(reshte_1, strlen(reshte_1), first);
+        fgets(reshte_2, strlen(reshte_2), second);
+    }
+}
+void set_shortcut(char *message, char *shortcut_name)
+{
+    FILE *open_shortcuts = fopen(message_shortcuts_path, "a");
+    fprintf("*%s*%s*\n", shortcut_name, message);
+    fclose(open_shortcuts);
+}
+void replace_shortcut(char *message, char *shortcut_name)
+{
+    char reshte[MAX_SIZE];
+    char reshte_jadid[MAX_SIZE];
+    FILE *read_shortcuts = fopen(message_shortcuts_path, "r");
+    fscanf(read_shortcuts, "%[^\0]", reshte);
+    fclose(read_shortcuts);
+    char *one = malloc(MAX_SIZE);
+    char *copy = malloc(MAX_SIZE);
+    char *part = malloc(MAX_SIZE);
+    char *jadid = malloc(MAX_SIZE);
+    one = strtok(reshte, "\n");
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        part = strtok(one, "*");
+        if (strncmp(shortcut_name, part, strlen(shortcut_name)) == 0)
+        {
+            sprintf(jadid, "*%s*%s*\n", shortcut_name, message);
+            strcat(reshte_jadid, jadid);
+        }
+        else
+        {
+            strcat(reshte_jadid, one);
+            strcat(reshte_jadid, "\n");
+        }
+        one = strtok(NULL, "\n");
+        strcpy(copy, one);
+    }
+    FILE *open_shortcuts = fopen(message_shortcuts_path, "w");
+    fprintf("%s", reshte_jadid);
+    fclose(open_shortcuts);
+}
+void remove_shortcut(char *shortcut_name)
+{
+    char reshte[MAX_SIZE];
+    char reshte_jadid[MAX_SIZE];
+    FILE *read_shortcuts = fopen(message_shortcuts_path, "r");
+    fscanf(read_shortcuts, "%[^\0]", reshte);
+    fclose(read_shortcuts);
+    char *one = malloc(MAX_SIZE);
+    char *copy = malloc(MAX_SIZE);
+    char *part = malloc(MAX_SIZE);
+    char *jadid = malloc(MAX_SIZE);
+    one = strtok(reshte, "\n");
+    strcpy(copy, one);
+    while (one != NULL)
+    {
+        part = strtok(one, "*");
+        if (strncmp(shortcut_name, part, strlen(shortcut_name)) == 0)
+        {
+        }
+        else
+        {
+            strcat(reshte_jadid, one);
+            strcat(reshte_jadid, "\n");
+        }
+        one = strtok(NULL, "\n");
+        strcpy(copy, one);
+    }
+    FILE *open_shortcuts = fopen(message_shortcuts_path, "w");
+    fprintf("%s", reshte_jadid);
+    fclose(open_shortcuts);
+}
+void checkout(char *commit_id)
+{
+    char *files_path = malloc(MAX_SIZE);
+    sprintf(files_path, "%s\\ngit\\commits\\%s\\FilePaths.txt", project_path, commit_id);
+    char reshte[MAX_SIZE];
+    FILE *open_paths = fopen(files_path, "r");
+    fscanf(open_paths, "%[^\0]", reshte);
+    fclose(open_paths);
+    char *line = malloc(MAX_SIZE);
+    line = strtok(reshte, "\n");
+    char *file_name = malloc(MAX_SIZE);
+    char *command = malloc(MAX_SIZE);
+    char *must_be_copied = malloc(MAX_SIZE);
+    while (line != NULL)
+    {
+        file_name = strrev(line);
+        file_name = strtok(file_name, "\\");
+        file_name = strrev(file_name);
+        sprintf(must_be_copied, "%s\\ngit\\commits\\%s\\%s", project_path, commit_id, file_name);
+        sprintf(command, "xcopy %s %s /s /i /y", must_be_copied, line);
+        line = strtok(NULL, "\n");
+    }
 }
 int main(int argc, char **argv)
 {
@@ -1201,16 +1970,20 @@ int main(int argc, char **argv)
         personal_variables_path = (char *)malloc(MAX_SIZE);
         local_or_global_path = (char *)malloc(MAX_SIZE);
         now_branch_path = (char *)malloc(MAX_SIZE);
-        now_last_commits_path = (char *)malloc(MAX_SIZE);
+        files_address_paths = (char *)malloc(MAX_SIZE);
         stage_case_path = (char *)malloc(MAX_SIZE);
         tags_path = (char *)malloc(MAX_SIZE);
         commits_folder_path = (char *)malloc(MAX_SIZE);
         message_shortcuts_path = (char *)malloc(MAX_SIZE);
         linked_commits_path = (char *)malloc(MAX_SIZE);
+        temp_stage = (char *)malloc(MAX_SIZE);
+        now_commit_path = (char *)malloc(MAX_SIZE);
         char address[MAX_SIZE];
         GetCurrentDirectory(sizeof(address), address);
         int check = dir_exist("ngit");
         SetCurrentDirectory(address);
+        strcpy(now_commit_path, project_path);
+        strcpy(temp_stage, project_path);
         strcpy(branches_path, project_path);
         strcpy(commits_path, project_path);
         strcpy(global_user_path, project_path);
@@ -1218,13 +1991,15 @@ int main(int argc, char **argv)
         strcpy(global_variables_path, project_path);
         strcpy(personal_variables_path, project_path);
         strcpy(local_or_global_path, project_path);
-        strcpy(now_last_commits_path, project_path);
+        strcpy(files_address_paths, project_path);
         strcpy(stage_case_path, project_path);
         strcpy(commits_folder_path, project_path);
         strcpy(tags_path, project_path);
         strcpy(now_branch_path, project_path);
         strcpy(message_shortcuts_path, project_path);
         strcpy(linked_commits_path, project_path);
+        strcat(now_commit_path, "\\ngit");
+        strcat(temp_stage, "\\ngit");
         strcat(branches_path, "\\ngit");
         strcat(commits_path, "\\ngit");
         strcat(global_user_path, "\\ngit");
@@ -1232,13 +2007,15 @@ int main(int argc, char **argv)
         strcat(global_variables_path, "\\ngit");
         strcat(personal_variables_path, "\\ngit");
         strcat(local_or_global_path, "\\ngit");
-        strcat(now_last_commits_path, "\\ngit");
+        strcat(files_address_paths, "\\ngit");
         strcat(stage_case_path, "\\ngit");
         strcat(tags_path, "\\ngit");
         strcat(now_branch_path, "\\ngit");
         strcat(commits_folder_path, "\\ngit");
         strcat(message_shortcuts_path, "\\ngit");
         strcat(linked_commits_path, "\\ngit");
+        strcat(now_commit_path, "\\NowCommit.txt");
+        strcat(temp_stage, "\\TempForStage.txt");
         strcat(branches_path, "\\Branches.txt");
         strcat(commits_path, "\\Commits.txt");
         strcat(global_user_path, "\\GlobalUser.txt");
@@ -1246,20 +2023,20 @@ int main(int argc, char **argv)
         strcat(global_variables_path, "\\GlobalVariables.txt");
         strcat(personal_variables_path, "\\PersonalVariables.txt");
         strcat(local_or_global_path, "\\LocalOrGlobal.txt");
-        strcat(now_last_commits_path, "\\NowLastCommits.txt");
+        strcat(files_address_paths, "\\FilePaths.txt");
         strcat(stage_case_path, "\\StageCase.txt");
         strcat(tags_path, "\\Tags.txt");
         strcat(now_branch_path, "\\NowBranch.txt");
         strcat(commits_folder_path, "\\commits");
         strcat(message_shortcuts_path, "\\MessageShortcuts.txt");
         strcat(linked_commits_path, "\\LinkedCommits.txt");
-        if (check != 1)
-        {
-            printf("Error : you are not in project\n");
-            return 0;
-        }
         if ((strncmp(argv[1], "config", 6) == 0) && argc > 2)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             if ((strncmp(argv[2], "-global", 7) == 0) && argc > 3)
             {
                 create_global_config(argc, argv);
@@ -1271,22 +2048,136 @@ int main(int argc, char **argv)
             }
             else
             {
-            } // must be completed
+                printf("Error : command not found. please put \"ngit\" in first of your command and type the rest of command.\n");
+            }
         }
         else if ((strncmp(argv[1], "init", 4) == 0) && argc == 2)
         {
             run_init(argc, argv);
         }
-        else if ((strncmp(argv[1], "add", 3) == 0) && argc > 2) // must code -f and -n and function need to be change in i
+        else if ((strncmp(argv[1], "add", 3) == 0) && argc > 2)
         {
-            add_to_stage(argc, argv);
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            if ((strncmp(argv[2], "-f", 2) == 0) && argc > 3)
+            {
+                add_to_stage(argc, argv, 3);
+            }
+            if ((strncmp(argv[2], "-n", 2) == 0) && argc == 4)
+            {
+                show_status();
+            }
+            else
+            {
+                add_to_stage(argc, argv, 2);
+            }
         }
-        else if ((strncmp(argv[1], "reset", 5) == 0) && argc > 2) // must code -f and -n and function need to be change in i
+        else if ((strncmp(argv[1], "diff", 4) == 0) && (strncmp(argv[2], "-f", 2) == 0))
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            if (argc == 5)
+            {
+                diff_files(argv[3], argv[4], 0, -1, 0, -1);
+            }
+            else if (argc == 8 && (strncmp(argv[5], "-line1", 6) == 0))
+            {
+                diff_files(argv[3], argv[4], char_to_int(argv[6]), char_to_int(argv[7]), 0, -1);
+            }
+            else if (argc == 8 && (strncmp(argv[5], "-line2", 6) == 0))
+            {
+                diff_files(argv[3], argv[4], 0, -1, char_to_int(argv[6]), char_to_int(argv[7]));
+            }
+            else if (argc == 11 && (strncmp(argv[5], "-line1", 6) == 0) && (strncmp(argv[8], "-line2", 6) == 0))
+            {
+                diff_files(argv[3], argv[4], char_to_int(argv[6]), char_to_int(argv[7]), char_to_int(argv[9]), char_to_int(argv[10]));
+            }
+        }
+        else if ((strncmp(argv[1], "reset", 5) == 0) && argc > 2)
+        {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             reset_staging(argc, argv);
+        }
+        else if ((strncmp(argv[1], "checkout", 8) == 0) && argc == 3)
+        {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            if (isdigit(argv[2]))
+            {
+                checkout(argv[2]);
+            }
+            else if (strncmp(argv[2], "HEAD", 4) == 0)
+            {
+                FILE *open_commits = fopen(commits_path, "r");
+                char reshte[MAX_SIZE];
+                fscanf(open_commits, "%[^\0]", reshte);
+                fclose(open_commits);
+                char line = malloc(MAX_SIZE);
+                line = strtok(reshte, "**********");
+                line = strstr(line, "commit_id:");
+                line = strtok(line, "\n");
+                strcpy(line, line + 10);
+                checkout(line);
+            }
+            else
+            {
+                FILE *open_commits = fopen(commits_path, "r");
+                char reshte[MAX_SIZE];
+                fscanf(open_commits, "%[^\0]", reshte);
+                fclose(open_commits);
+                char line = malloc(MAX_SIZE);
+                line = strtok(reshte, "**********");
+                char *copy = malloc(MAX_SIZE);
+                strcpy(copy, line);
+                char *com_id = malloc(MAX_SIZE);
+                char *branch_name = malloc(MAX_SIZE);
+                while (line != NULL)
+                {
+                    branch_name = strstr(line, "branch:");
+                    branch_name = strtok(branch_name, "\n");
+                    strcpy(branch_name, branch_name + 7);
+                    if (strncmp(argv[3], branch_name, strlen(argv[3])) == 0)
+                    {
+                        com_id = strstr(line, "commit_id:");
+                        com_id = strtok(com_id, "\n");
+                        strcpy(com_id, com_id + 10);
+                        break;
+                    }
+                    line = strtok(NULL, "**********");
+                    strcpy(copy, line);
+                }
+                checkout(com_id);
+            }
+        }
+        else if ((strncmp(argv[1], "status", 6) == 0) && argc == 2)
+        {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            show_status();
         }
         else if ((strncmp(argv[1], "commit", 6) == 0) && argc == 4)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             if ((strncmp(argv[2], "-m", 2) == 0))
             {
                 if (strlen(argv[3]) <= 74)
@@ -1294,24 +2185,78 @@ int main(int argc, char **argv)
                     run_commit(argv[3]);
                 }
                 else
-                { // must be completed
+                {
+                    printf("Error : your message is too long\n");
+                }
+            }
+            else if ((strncmp(argv[2], "-s", 2) == 0))
+            {
+                char reshte[MAX_SIZE];
+                char message[MAX_SIZE];
+                FILE *read_shortcuts = fopen(message_shortcuts_path, "r");
+                fscanf(read_shortcuts, "%[^\0]", reshte);
+                fclose(read_shortcuts);
+                char *one = malloc(MAX_SIZE);
+                char *copy = malloc(MAX_SIZE);
+                char *part = malloc(MAX_SIZE);
+                char *jadid = malloc(MAX_SIZE);
+                one = strtok(reshte, "\n");
+                strcpy(copy, one);
+                int hast = 0;
+                while (one != NULL)
+                {
+                    part = strtok(one, "*");
+                    if (strncmp(argv[3], part, strlen(argv[3])) == 0)
+                    {
+                        part = strtok(NULL, "*");
+                        hast = 1;
+                        run_commit(part);
+                    }
+                }
+                if (!hast)
+                {
+                    printf("Error : shortcut not found\n");
                 }
             }
             else
-            { // must be completed
+            {
+                printf("Error : command not found. please put \"ngit\" in first of your command and type the rest of command.\n");
             }
         }
-        else if ((strncmp(argv[1], "set", 3) == 0) && argc > 2) // must be changed and completed
+        else if ((strncmp(argv[1], "set", 3) == 0) && (strncmp(argv[2], "-m", 2) == 0) && (strncmp(argv[4], "-s", 2) == 0) && argc == 6)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            set_shortcut(argv[3], argv[5]);
         }
-        else if ((strncmp(argv[1], "replace", 3) == 0) && argc > 2) // must be changed and completed
+        else if ((strncmp(argv[1], "replace", 3) == 0) && (strncmp(argv[2], "-m", 2) == 0) && (strncmp(argv[4], "-s", 2) == 0) && argc == 6)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            replace_shortcut(argv[3], argv[5]);
         }
-        else if ((strncmp(argv[1], "remove", 3) == 0) && argc > 2) // must be changed and completed
+        else if ((strncmp(argv[1], "remove", 3) == 0) && (strncmp(argv[2], "-s", 2) == 0) && argc == 4)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            remove_shortcut(argv[3]);
         }
         else if ((strncmp(argv[1], "log", 3) == 0) && argc >= 2)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             if (argc == 2)
             {
                 run_all_log();
@@ -1345,18 +2290,52 @@ int main(int argc, char **argv)
             {
                 run_many_word_log(argc, argv);
             }
-            // must be add serach word
         }
         else if ((strncmp(argv[1], "branch", 6) == 0) && argc == 2)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             show_branches();
         }
         else if ((strncmp(argv[1], "branch", 6) == 0) && argc == 3)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             make_branches(argv[2]);
+        }
+        else if ((strncmp(argv[1], "tag", 3) == 0) && argc > 1)
+        {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
+            if ((strncmp(argv[2], "-a", 2) == 0) && argc > 3)
+            {
+                run_tag(argc, argv);
+            }
+            else if (strncmp(argv[2], "show", 4) == 0 && argc == 4)
+            {
+                show_tag_name(argv[3]);
+            }
+            else if (argc == 2)
+            {
+                tag_show();
+            }
         }
         else if (argc == 2)
         {
+            if (check != 1)
+            {
+                printf("Error : you are not in project\n");
+                return 0;
+            }
             FILE *open_global_variables = fopen(global_variables_path, "r");
             char *lines_global_variables = malloc(MAX_SIZE);
             fscanf(open_global_variables, "%[^\0]", lines_global_variables);
@@ -1417,11 +2396,13 @@ int main(int argc, char **argv)
     free(personal_variables_path);
     free(local_or_global_path);
     free(now_branch_path);
-    free(now_last_commits_path);
+    free(files_address_paths);
     free(stage_case_path);
     free(tags_path);
     free(commits_folder_path);
     free(message_shortcuts_path);
     free(linked_commits_path);
+    free(temp_stage);
+    free(now_commit_path);
     return 0;
 }
